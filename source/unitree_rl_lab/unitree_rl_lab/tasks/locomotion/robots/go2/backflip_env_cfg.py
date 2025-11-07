@@ -224,13 +224,12 @@ class RewardsCfg:
     )
     
     upward_vel_air = RewTerm(
-        func=lambda env: mdp.upward_vel_air(env) * env.scene.sensors["contact_forces"]
-            .data
-            .net_forces_w[:, :, :].norm(dim=-1)
-            .lt(1.0)
-            .all(dim=1)
-            .float(),
+        func=mdp.upward_vel_air_airborne,
         weight=0.05,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
     )
 
     backflip_progress = RewTerm(

@@ -287,7 +287,18 @@ def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float,
 
     return jumped & was_upside_down & on_feet_now & landed_stable & upright_now
 
-def upward_vel_air(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+def upward_vel_air_airborne(env, sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+                            asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """
+    Reward upward base velocity ONLY when all feet are in the air.
+    """
+    # upward velocity
     asset = env.scene[asset_cfg.name]
-    zvel = asset.data.root_lin_vel_w[:, 2]
-    return torch.clamp(zvel, min=0.0)
+    zvel = torch.clamp(asset.data.root_lin_vel_w[:, 2], min=0.0)
+
+    # airborne mask
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    airborne = (foot_f < 1.0).all(dim=1)    # [N]
+
+    return zvel * airborne.float()
