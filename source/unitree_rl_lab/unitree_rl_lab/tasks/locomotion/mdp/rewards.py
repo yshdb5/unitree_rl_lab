@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 from typing import TYPE_CHECKING
+import math
 
 try:
     from isaaclab.utils.math import quat_apply_inverse
@@ -238,91 +239,99 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
 
-def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str, full_rotation_rad: float,
-                      upright_bonus: float = 0.5, air_only: bool = True,
-                      landing_window_s: float = 0.6):
-    """
-    Progress proxy: use angle-to-up from projected gravity in body frame.
-    0 rad = upright, π rad = upside down. Normalize by π (not 2π).
-    """
-    robot_data = env.scene["robot"].data
-    z = torch.clamp(robot_data.projected_gravity_b[:, 2], -1.0, 1.0)
-    angle_to_up = torch.acos(z)               
-    progress = torch.clamp(angle_to_up / torch.tensor(torch.pi, device=env.device), 0.0, 1.0)
 
+def _axis_angle_from_up(env, axis: str):
+    """Angle (0..π) about a target body axis from the body 'up' vector."""
+    up_b = env.scene["robot"].data.projected_gravity_b  # [N,3]
+    z = torch.clamp(up_b[:, 2], -1.0, 1.0)
+    if axis == "pitch":
+        num = torch.abs(up_b[:, 0])  # x component
+    elif axis == "roll":
+        num = torch.abs(up_b[:, 1])  # y component
+    else:
+        num = torch.sqrt(up_b[:, 0] ** 2 + up_b[:, 1] ** 2)
+    return torch.atan2(num, z)  # [0, π]
+
+def yaw_rate_penalty_air(env, sensor_cfg: SceneEntityCfg,
+                         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """Penalize |yaw rate| only while airborne."""
+    asset = env.scene[asset_cfg.name]
+    wz = torch.abs(asset.data.root_ang_vel_b[:, 2])
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    airborne = (foot_f < 1.0).all(dim=1)
+    return wz * airborne.float()
+
+def non_target_axis_leak_air(env, sensor_cfg: SceneEntityCfg, target_axis: str):
+    """Discourage roll if we want pitch (and vice-versa), only in air."""
+    other = "roll" if target_axis == "pitch" else "pitch"
+    leak = _axis_angle_from_up(env, other) / math.pi
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    airborne = (foot_f < 1.0).all(dim=1)
+    return leak * airborne.float()
+
+def target_axis_rate_air(env, sensor_cfg: SceneEntityCfg, axis: str,
+                         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """Encourage angular speed about the target axis while airborne."""
+    asset = env.scene[asset_cfg.name]
+    ang = torch.abs(asset.data.root_ang_vel_b[:, 1] if axis == "pitch"
+                    else asset.data.root_ang_vel_b[:, 0])     # roll uses x, pitch uses y
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    airborne = (foot_f < 1.0).all(dim=1)
+    return ang * airborne.float()
+
+def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str,
+                      full_rotation_rad: float,
+                      upright_bonus: float = 0.0,  # disabled
+                      air_only: bool = True,
+                      landing_window_s: float = 0.6):
+    """Axis-aware progress in [0,1]; only counts in air if air_only=True."""
+    angle = _axis_angle_from_up(env, axis)              # [0, π]
+    progress = torch.clamp(angle / math.pi, 0.0, 1.0)
     if air_only:
         contact_sensor = env.scene.sensors[sensor_cfg.name]
         foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
         airborne = (foot_f < 1.0).all(dim=1)
         progress = progress * airborne.float()
-
     return progress
 
 def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float, axis: str,
                         min_airtime_s: float, post_land_stable_s: float, full_rotation_rad: float):
     """
-    Success when: was upside down in the air, then lands and stays upright on feet for a short window.
-    We don't try to detect literal 360° unwrapped; we require π rad (upside down) during the airborne phase
-    and a stable upright landing.
+    Success: (i) went upside-down about target axis while airborne,
+             (ii) then landed and stayed upright on feet for a short window.
     """
-    robot = env.scene["robot"]
-    z = torch.clamp(robot.data.projected_gravity_b[:, 2], -1.0, 1.0)
-    angle_to_up = torch.acos(z)  # [0, π]
+    # Per-episode state
+    if not hasattr(env, "_flip_state"):
+        env._flip_state = {
+            "seen_upside_down": torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        }
+    # Reset flag on episode reset
+    at_reset = (env.episode_length_buf == 0)
+    if at_reset.any():
+        env._flip_state["seen_upside_down"][at_reset] = False
 
+    # Sensors
     contact_sensor = env.scene.sensors[sensor_cfg.name]
     foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    airborne = (foot_f < 1.0).all(dim=1)
     on_feet_now = (foot_f > 1.0).all(dim=1)
 
-    # Require each foot to have been in the air sufficiently recently (jump happened)
-    last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]      # [N, 4]
-    jumped = (last_air.min(dim=1).values >= min_airtime_s)
+    angle = _axis_angle_from_up(env, axis)  # [0, π]
+    env._flip_state["seen_upside_down"] |= airborne & (angle >= 0.95 * math.pi)
 
-    # After landing, require they have been in contact for post_land_stable_s
-    last_contact = contact_sensor.data.last_contact_time[:, sensor_cfg.body_ids]
-    landed_stable = (last_contact.min(dim=1).values >= post_land_stable_s)
+    # Jumped & stable landing window
+    last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids].min(dim=1).values
+    jumped = last_air >= min_airtime_s
+    last_contact = contact_sensor.data.last_contact_time[:, sensor_cfg.body_ids].min(dim=1).values
+    landed_stable = last_contact >= post_land_stable_s
 
-    upright_now = z >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
-    was_upside_down = angle_to_up >= (0.95 * torch.tensor(torch.pi, device=env.device))
+    # Upright now
+    up_b = env.scene["robot"].data.projected_gravity_b
+    upright_now = up_b[:, 2] >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
 
-    return jumped & was_upside_down & on_feet_now & landed_stable & upright_now
-
-def upward_vel_air_airborne(env, sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
-                            asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
-    """
-    Reward upward base velocity ONLY when all feet are in the air.
-    """
-    # upward velocity
-    asset = env.scene[asset_cfg.name]
-    zvel = torch.clamp(asset.data.root_lin_vel_w[:, 2], min=0.0)
-
-    # airborne mask
-    contact_sensor = env.scene.sensors[sensor_cfg.name]
-    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
-    airborne = (foot_f < 1.0).all(dim=1)    # [N]
-
-    return zvel * airborne.float()
-
-def post_flip_land_reward(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, min_airtime_s: float) -> torch.Tensor:
-    """Rewards all feet being in contact AFTER a jump."""
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    
-    # Check for landing on feet (all feet have contact)
-    foot_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2] # [N, num_feet]
-    on_feet = (foot_forces.abs() > 1.0).all(dim=1) # [N]
-
-    # Check that a jump just happened (minimum air time was met)
-    last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]      # [N, 4]
-    jumped = (last_air.min(dim=1).values >= min_airtime_s)
-
-    return (on_feet & jumped).float()
-
-def ang_vel_x_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Penalize angular velocity in the x-direction (roll)."""
-    asset: RigidObject = env.scene[asset_cfg.name]
-    return torch.square(asset.data.root_ang_vel_b[:, 0])
-
-
-def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Penalize angular velocity in the z-direction (yaw)."""
-    asset: RigidObject = env.scene[asset_cfg.name]
-    return torch.square(asset.data.root_ang_vel_b[:, 2])
+    success = jumped & env._flip_state["seen_upside_down"] & on_feet_now & landed_stable & upright_now
+    env._flip_state["seen_upside_down"][success] = False  # one-shot
+    return success

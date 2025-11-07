@@ -107,11 +107,8 @@ class EventCfg:
     add_base_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "mass_distribution_params": (-0.5, 1.0),
-            "operation": "add",
-        },
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="base"),
+                "mass_distribution_params": (-0.2, 0.2), "operation": "add"},
     )
 
     # reset
@@ -129,8 +126,9 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3), "yaw": (-0.5, 0.5)},
-            "velocity_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "pose_range": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "yaw": (-0.1, 0.1)},  
+            "velocity_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
+                            "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
         },
     )
 
@@ -168,7 +166,7 @@ class ActionsCfg:
     """Action specs."""
 
     JointPositionAction = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=[".*"], scale=0.55, use_default_offset=True, clip={".*": (-100.0, 100.0)}
+        asset_name="robot", joint_names=[".*"], scale=0.8, use_default_offset=True, clip={".*": (-100.0, 100.0)}
     )
 
 
@@ -234,13 +232,44 @@ class RewardsCfg:
         },
     )
 
+    # discourage yaw spin only in air
+    yaw_spin_air = RewTerm(
+        func=mdp.yaw_rate_penalty_air,
+        weight=-0.30,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+
+    # discourage rotation about wrong axis (roll) while airborne
+    non_target_leak = RewTerm(
+        func=mdp.non_target_axis_leak_air,
+        weight=-0.60,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "target_axis": "pitch",
+        },
+    )
+
+    # encourage actual pitch rotation speed in air
+    pitch_rate_air = RewTerm(
+        func=mdp.target_axis_rate_air,
+        weight=0.25,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "axis": "pitch",
+        },
+    )
+
     backflip_progress = RewTerm(
         func=mdp.backflip_progress,
-        weight=10.0,
+        weight=14.0,  # dominate jump-only local optimum
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "axis": "pitch",
             "full_rotation_rad": math.pi,
+            "upright_bonus": 0.0,
             "air_only": True,
             "landing_window_s": 0.6,
         },
@@ -257,8 +286,6 @@ class RewardsCfg:
 
     # regularizers
     base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
-    base_angular_velocity = RewTerm(func=mdp.ang_vel_x_l2, weight=-1.0)
-    base_ang_vel_z = RewTerm(func=mdp.ang_vel_z_l2, weight=-1.0)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0008)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.0e-7)
     joint_torques = RewTerm(func=mdp.joint_torques_l2, weight=-1.5e-4)
