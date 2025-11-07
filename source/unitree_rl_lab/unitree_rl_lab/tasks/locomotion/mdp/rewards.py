@@ -119,18 +119,15 @@ def feet_height_body(
 def feet_air_time(env, sensor_cfg: SceneEntityCfg, command_name: str, threshold: float):
     """
     Reward airtime: encourages pushing off ground into a jump.
-    command_name is ignored for backflip tasks but must exist.
+    `command_name` is required by the manager API, but we ignore it for backflip.
     """
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    if contact_sensor.cfg.track_air_time is False:
+        raise RuntimeError("Enable ContactSensor.track_air_time=True in scene cfg")
 
-    # Air time per foot (tracked by contact sensor)
-    # last_air_time increases while foot is airborne
-    air_times = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
-
-    # Reward = mean airtime, clipped so it doesn't explode
-    reward = torch.mean(torch.clamp(air_times, min=0.0, max=threshold), dim=1)
-
-    # Do NOT scale reward by command — we want jumping even without locomotion
+    # airtime per selected foot, then clip & average
+    air_times = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]  # [N, num_feet]
+    reward = torch.mean(torch.clamp(air_times, min=0.0, max=threshold), dim=1)  # [N]
     return reward
 
 
@@ -241,80 +238,48 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
 
-def backflip_progress(
-    env,
-    sensor_cfg: SceneEntityCfg,
-    axis: str,
-    full_rotation_rad: float,
-    upright_bonus: float = 0.5,
-    air_only: bool = True,
-    landing_window_s: float = 0.6,  # reserved for future use
-):
-    # --- robot state (IsaacLab accessors)
+def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str, full_rotation_rad: float,
+                      upright_bonus: float = 0.5, air_only: bool = True,
+                      landing_window_s: float = 0.6):
+    """Reward normalized rotation progress about the chosen axis (pitch for backflip)."""
     robot_data = env.scene["robot"].data
-    base_quat = robot_data.root_quat_w                     # [N, 4]
-    roll, pitch, yaw = euler_xyz_from_quat(base_quat)      # each [N]
+    base_quat = robot_data.root_quat_w  # [N,4]
+    roll, pitch, yaw = euler_xyz_from_quat(base_quat)
 
-    # choose axis (backflip -> pitch)
-    axis_l = axis.lower()
-    if axis_l == "pitch":
-        rot = torch.abs(pitch)
-    elif axis_l == "roll":
-        rot = torch.abs(roll)
-    else:
-        rot = torch.abs(yaw)
-
+    a = axis.lower()
+    rot = torch.abs(pitch if a == "pitch" else roll if a == "roll" else yaw)
     progress = torch.clamp(rot / full_rotation_rad, 0.0, 1.5)
 
     if air_only:
-        # contact magnitudes for the configured feet
         contact_sensor = env.scene.sensors[sensor_cfg.name]
         foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)  # [N, num_feet]
-        airborne = (foot_f < 1.0).all(dim=1)  # tweak threshold if needed
+        airborne = (foot_f < 1.0).all(dim=1)
         progress = progress * airborne.float()
 
-    # upright bonus via projected gravity in body frame (+Z up)
-    proj_g_b = robot_data.projected_gravity_b              # [N,3]
+    proj_g_b = robot_data.projected_gravity_b
     upright = (proj_g_b[:, 2] > 0.85).float()
-    progress = progress + upright * upright_bonus
-    return progress
+    return progress + upright * upright_bonus
 
 
-def successful_backflip(
-    env,
-    sensor_cfg: SceneEntityCfg,
-    upright_tol_rad: float,
-    axis: str,
-    min_airtime_s: float,
-    post_land_stable_s: float,
-    full_rotation_rad: float,
-):
+def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float, axis: str,
+                        min_airtime_s: float, post_land_stable_s: float, full_rotation_rad: float):
+    """Successful episode when rotated ~360°, upright, and stably on feet for a short window."""
     robot_data = env.scene["robot"].data
-    base_quat = robot_data.root_quat_w                     # [N, 4]
+    base_quat = robot_data.root_quat_w
     roll, pitch, yaw = euler_xyz_from_quat(base_quat)
 
-    axis_l = axis.lower()
-    if axis_l == "pitch":
-        rot = torch.abs(pitch)
-    elif axis_l == "roll":
-        rot = torch.abs(roll)
-    else:
-        rot = torch.abs(yaw)
-
+    a = axis.lower()
+    rot = torch.abs(pitch if a == "pitch" else roll if a == "roll" else yaw)
     rotated = rot > (full_rotation_rad * 0.95)
 
-    # upright check: cos(angle_to_up) >= cos(tol)
-    proj_g_b = robot_data.projected_gravity_b              # [N,3]
+    proj_g_b = robot_data.projected_gravity_b
     upright = proj_g_b[:, 2] >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
 
-    # foot contact stable now
     contact_sensor = env.scene.sensors[sensor_cfg.name]
-    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)  # [N, num_feet]
-    on_feet_now = (foot_f > 1.0).all(dim=1)
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    on_feet = (foot_f > 1.0).all(dim=1)
 
-    # episode time (per-env)
-    t = env.episode_length_buf * env.step_dt               # [N]
+    t = env.episode_length_buf * env.step_dt
     stable_time = t >= (min_airtime_s + post_land_stable_s)
 
-    success = rotated & upright & on_feet_now & stable_time
-    return success
+    return rotated & upright & on_feet & stable_time

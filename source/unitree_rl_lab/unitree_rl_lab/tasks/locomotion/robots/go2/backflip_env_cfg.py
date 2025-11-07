@@ -21,6 +21,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
 from unitree_rl_lab.tasks.locomotion import mdp
 
+# --- simple flat terrain
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
@@ -32,20 +33,20 @@ COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     difficulty_range=(0.0, 1.0),
     use_cache=False,
     sub_terrains={
-        "flat": terrain_gen.MeshPlaneTerrainCfg(proportion=0.1)
+        "flat": terrain_gen.MeshPlaneTerrainCfg(proportion=0.1),
     },
 )
 
 
 @configclass
 class RobotSceneCfg(InteractiveSceneCfg):
-    """Configuration for the terrain scene with a legged robot."""
+    """Scene with Unitree Go2 on flat pad."""
 
-    # ground terrain
+    # ground
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
-        terrain_type="generator",  # "plane", "generator"
-        terrain_generator=COBBLESTONE_ROAD_CFG,  # None, ROUGH_TERRAINS_CFG
+        terrain_type="generator",
+        terrain_generator=COBBLESTONE_ROAD_CFG,
         max_init_terrain_level=1,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -55,13 +56,14 @@ class RobotSceneCfg(InteractiveSceneCfg):
             dynamic_friction=1.0,
         ),
         visual_material=sim_utils.MdlFileCfg(
-            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
+            mdl_path=f"{ISAAC_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
             project_uvw=True,
             texture_scale=(0.25, 0.25),
         ),
         debug_vis=False,
     )
-    # robots
+
+    # robot
     robot: ArticulationCfg = ROBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # sensors
@@ -74,7 +76,8 @@ class RobotSceneCfg(InteractiveSceneCfg):
         mesh_prim_paths=["/World/ground"],
     )
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=6, track_air_time=True)
-    # lights
+
+    # light
     sky_light = AssetBaseCfg(
         prim_path="/World/skyLight",
         spawn=sim_utils.DomeLightCfg(
@@ -86,7 +89,7 @@ class RobotSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class EventCfg:
-    """Configuration for events."""
+    """Domain randomization & resets."""
 
     # startup
     physics_material = EventTerm(
@@ -127,27 +130,17 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3), "yaw": (-0.5, 0.5)},
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
+            "velocity_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
         },
     )
 
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
-        params={
-            "position_range": (1.0, 1.0),
-            "velocity_range": (-0.5, 0.5),
-        },
+        params={"position_range": (1.0, 1.0), "velocity_range": (-0.5, 0.5)},
     )
 
-    # interval
+    # interval pushes
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
@@ -155,37 +148,40 @@ class EventCfg:
         params={"velocity_range": {"x": (-0.2, 0.2), "y": (-0.2, 0.2)}},
     )
 
+
+@configclass
+class CommandsCfg:
+    """Define a dummy velocity command so reward terms that require a command_name do not crash."""
+    # Use the same type as velocity env, but ranges ~0 ⇒ command ~0
+    base_velocity = mdp.UniformLevelVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(9999.0, 9999.0),
+        rel_standing_envs=1.0,
+        debug_vis=False,
+        ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(0.0, 0.0)),
+        limit_ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(0.0, 0.0)),
+    )
+
+
 @configclass
 class ActionsCfg:
-    """Action specifications for the MDP."""
+    """Action specs."""
 
     JointPositionAction = mdp.JointPositionActionCfg(
         asset_name="robot", joint_names=[".*"], scale=0.35, use_default_offset=True, clip={".*": (-100.0, 100.0)}
     )
 
-@configclass
-class CommandsCfg:
-    """Dummy command so reward term does not crash."""
-    backflip_dummy_cmd = mdp.ConstantCommandCfg(
-        command_name="backflip_dummy_cmd",
-        value=[0.0, 0.0, 0.0],               # no influence
-        resampling_time_range=(9999.0, 9999.0),
-    )
-
 
 @configclass
 class ObservationsCfg:
-    """Observation specifications for the MDP."""
+    """Observations."""
+
     @configclass
     class PolicyCfg(ObsGroup):
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.3, clip=(-100, 100),
-                               noise=Unoise(n_min=-0.2, n_max=0.2))
-        projected_gravity = ObsTerm(func=mdp.projected_gravity, clip=(-100, 100),
-                                    noise=Unoise(n_min=-0.05, n_max=0.05))
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, clip=(-100, 100),
-                                noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, clip=(-100, 100),
-                                noise=Unoise(n_min=-1.5, n_max=1.5))
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.3, clip=(-100, 100), noise=Unoise(n_min=-0.2, n_max=0.2))
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, clip=(-100, 100), noise=Unoise(n_min=-0.05, n_max=0.05))
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, clip=(-100, 100), noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, clip=(-100, 100), noise=Unoise(n_min=-1.5, n_max=1.5))
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
 
         def __post_init__(self):
@@ -206,57 +202,52 @@ class ObservationsCfg:
 
     critic: CriticCfg = CriticCfg()
 
+
 @configclass
 class RewardsCfg:
-    """Shaping for jump → rotate (pitch) → land-upright backflip."""
+    """Rewards for jump → rotate → land backflip."""
 
-    # --- jump/airtime shaping
-    # Encourage leaving the ground decisively (higher threshold and weight)
+    # jump/airtime
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
         weight=0.6,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "backflip_dummy_cmd",
-            "threshold": 0.35,  # counts airtime after brief contact release
+            "command_name": "base_velocity",   # required by term signature; ignored in our mdp impl
+            "threshold": 0.35,
         },
     )
-    # Keep feet airtime across legs somewhat coordinated (don’t flail)
     air_time_variance = RewTerm(
         func=mdp.air_time_variance_penalty,
         weight=-0.4,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
 
-    # --- rotation progress about pitch (backflip core)  <-- implement in mdp.py
-    # Returns ~0..1 as the robot completes a 360° rotation while airborne.
+    # rotation progress (implemented in mdp.rewards)
     backflip_progress = RewTerm(
-        func=mdp.backflip_progress,  # TODO: add this helper in mdp.py (see notes below)
+        func=mdp.backflip_progress,
         weight=6.0,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "axis": "pitch",            # rotation about lateral axis
+            "axis": "pitch",
             "full_rotation_rad": 2.0 * math.pi,
-            "upright_bonus": 0.5,       # extra reward for finishing upright with stable contacts
-            "air_only": True,           # only accrue rotation reward while airborne
-            "landing_window_s": 0.6,    # grace window to stabilize after landing
+            "upright_bonus": 0.5,
+            "air_only": True,
+            "landing_window_s": 0.6,
         },
     )
 
-    # --- regularization costs (keep them mild to not suppress flips)
-    base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.8)     # don't pogo-stick vertically forever
-    base_angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.02)  # mild smoothing on non-pitch axes
+    # regularizers
+    base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.8)
+    base_angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.02)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0008)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.0e-7)
     joint_torques = RewTerm(func=mdp.joint_torques_l2, weight=-1.5e-4)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.06)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-6.0)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-5)
-
-    # During flips we *temporarily* tolerate non-flat orientations, so keep this light.
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.6)
 
-    # Feet hygiene / safety
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.06,
@@ -269,7 +260,7 @@ class RewardsCfg:
         func=mdp.undesired_contacts,
         weight=-1.0,
         params={
-            "threshold": 1,  # any contact
+            "threshold": 1,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
         },
     )
@@ -277,25 +268,19 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    """Done terms tuned for acrobatics."""
+    """Done terms for acrobatics."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-
-    # Allow large orientation excursions during aerial phase; keep a generous limit.
-    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.6})  # ~92 degrees cone
-
-    # Hard-stop on base smack (crash)
+    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.6})
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-
-    # Successful completion (implement in mdp.py)
     successful_backflip = DoneTerm(
-        func=mdp.successful_backflip,  # TODO: add in mdp.py
+        func=mdp.successful_backflip,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "upright_tol_rad": 0.35,     # ~20 degrees from upright
+            "upright_tol_rad": 0.35,
             "axis": "pitch",
             "min_airtime_s": 0.15,
             "post_land_stable_s": 0.4,
@@ -306,72 +291,45 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """Simple curriculum knobs (optional, start easy)."""
+    """(Optional) curriculum — disabled for now to keep logs clean."""
+    # You can add scalar schedules later if needed
+    pass
 
-    # Increase airtime threshold over training to promote stronger jumps
-    airtime_threshold = CurrTerm(
-        func=mdp.scalar_schedule,   # generic helper in your mdp (or replace by your scheduler)
-        params={
-            "target_attr": ("rewards", "feet_air_time", "params", "threshold"),
-            "start": 0.20,
-            "end": 0.40,
-            "num_steps": 5,
-        },
-    )
-
-    # Tighten upright tolerance for success over time (harder landings)
-    success_upright_tolerance = CurrTerm(
-        func=mdp.scalar_schedule,
-        params={
-            "target_attr": ("terminations", "successful_backflip", "params", "upright_tol_rad"),
-            "start": 0.6,
-            "end": 0.3,
-            "num_steps": 5,
-        },
-    )
 
 @configclass
 class RobotEnvCfg(ManagerBasedRLEnvCfg):
     """Backflip environment for Unitree Go2 (RL)."""
 
-    # Scene
     scene: RobotSceneCfg = RobotSceneCfg(num_envs=4096, env_spacing=2.5)
 
-    # Core specs
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()        # <-- IMPORTANT: register dummy command
 
-    commands: CommandsCfg = CommandsCfg()
-
-    # MDP blocks
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
-    curriculum: None
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        # control/episode timing
         self.decimation = 4
-        self.episode_length_s = 6.0   # short bursts; increase later if desired
+        self.episode_length_s = 6.0
 
-        # sim settings
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
 
-        # sensor update periods
         self.scene.contact_forces.update_period = self.sim.dt
         self.scene.height_scanner.update_period = self.decimation * self.sim.dt
 
-        # keep terrain generator curriculum off for flat pad
         if self.scene.terrain.terrain_generator is not None:
             self.scene.terrain.terrain_generator.curriculum = False
 
 
 @configclass
 class RobotPlayEnvCfg(RobotEnvCfg):
-    """Play config for visualization/demo."""
+    """Small play config for visualization."""
 
     def __post_init__(self):
         super().__post_init__()
