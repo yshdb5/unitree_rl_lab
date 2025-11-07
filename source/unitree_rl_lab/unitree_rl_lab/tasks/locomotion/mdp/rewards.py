@@ -223,3 +223,63 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
         )
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
+
+def backflip_progress(env, sensor_cfg, axis: str, full_rotation_rad: float,
+                      upright_bonus: float = 0.5, air_only: bool = True,
+                      landing_window_s: float = 0.6):
+    """
+    Reward progress toward completing a full backflip (rotation about pitch).
+    - Uses base orientation to determine rotation progress.
+    - Only accumulates reward while airborne (if air_only=True).
+    """
+    # Get base orientation quaternion → convert to pitch angle
+    base_quat = env.root_state[:, 3:7]
+    # Extract pitch from quaternion (y-axis rotation)
+    _, pitch, _ = env.quat_to_euler_xyz(base_quat)
+
+    # Normalize progress
+    progress = torch.abs(pitch) / full_rotation_rad
+    progress = torch.clamp(progress, 0.0, 1.5)  # allow slight overshoot bonus
+
+    if air_only:
+        # Foot contact: 0 = airborne → accumulate
+        foot_contacts = env._contact_forces(sensors=sensor_cfg)
+        airborne = (foot_contacts < 1e-4).all(dim=1)
+        progress = progress * airborne.float()
+
+    # Upright bonus at landing
+    # upright if projected gravity ~ +Z
+    proj_g = env.projected_gravity()
+    upright = (proj_g[:, 2] > 0.85).float()
+    progress += upright * upright_bonus
+
+    return progress
+
+def successful_backflip(env, sensor_cfg, upright_tol_rad: float, axis: str,
+                        min_airtime_s: float, post_land_stable_s: float,
+                        full_rotation_rad: float):
+    """
+    Episode ends successfully when:
+    1. The robot achieved ≥ 360° rotation about pitch while airborne.
+    2. Landed upright.
+    3. Stayed stable for post_land_stable_s seconds.
+    """
+    base_quat = env.root_state[:, 3:7]
+    _, pitch, _ = env.quat_to_euler_xyz(base_quat)
+
+    rotated = torch.abs(pitch) > (full_rotation_rad * 0.85)
+
+    proj_g = env.projected_gravity()
+    upright = (proj_g[:, 2] > torch.cos(upright_tol_rad)).float()
+
+    foot_contacts = env._contact_forces(sensors=sensor_cfg)
+    on_feet = (foot_contacts > 1e-4).all(dim=1)
+
+    # Time conditions
+    # env.episode_step * env.sim.dt gives clock time
+    t = env.episode_step * env.sim.dt
+    stable = t > min_airtime_s
+
+    success = rotated & (upright.bool()) & on_feet.bool() & stable
+    return success
+

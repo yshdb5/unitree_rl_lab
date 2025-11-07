@@ -59,3 +59,19 @@ def ang_vel_cmd_levels(
             ).tolist()
 
     return torch.tensor(ranges.ang_vel_z[1], device=env.device)
+
+def scalar_schedule(env, target_attr, start, end, num_steps):
+    """
+    Linearly interpolates a parameter across training.
+    """
+    progress = env.training_step / max(1, num_steps)
+    progress = torch.clamp(progress, 0.0, 1.0)
+    value = start + progress * (end - start)
+
+    # Apply nested attribute update
+    obj = env
+    for key in target_attr[:-1]:
+        obj = getattr(obj, key)
+    setattr(obj, target_attr[-1], value)
+
+    return value
