@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 try:
     from isaaclab.utils.math import quat_apply_inverse
 except ImportError:
-    from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse
+    from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse, euler_xyz_from_quat
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
@@ -224,62 +224,97 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
 
-def backflip_progress(env, sensor_cfg, axis: str, full_rotation_rad: float,
-                      upright_bonus: float = 0.5, air_only: bool = True,
-                      landing_window_s: float = 0.6):
+from isaaclab.utils.math import quat_to_euler_xyz  # at top with your other imports
+
+def backflip_progress(
+    env: "ManagerBasedRLEnv",
+    sensor_cfg: SceneEntityCfg,
+    axis: str,
+    full_rotation_rad: float,
+    upright_bonus: float = 0.5,
+    air_only: bool = True,
+    landing_window_s: float = 0.6,   # kept for future use
+) -> torch.Tensor:
     """
     Reward progress toward completing a full backflip (rotation about pitch).
-    - Uses base orientation to determine rotation progress.
-    - Only accumulates reward while airborne (if air_only=True).
+    Accrues mainly while airborne and gives a small bonus when upright after landing.
+    Returns shape: [num_envs]
     """
-    # Get base orientation quaternion → convert to pitch angle
-    base_quat = env.root_state[:, 3:7]
-    # Extract pitch from quaternion (y-axis rotation)
-    _, pitch, _ = env.quat_to_euler_xyz(base_quat)
+    # --- base orientation (quaternion → euler)
+    root_state = env.scene["robot"].data.root_state        # [N, 13] (pos 3, quat 4, lin vel 3, ang vel 3)
+    base_quat = root_state[:, 3:7]                         # [N, 4]
+    roll, pitch, yaw = euler_xyz_from_quat(base_quat)      # each [N]
 
-    # Normalize progress
-    progress = torch.abs(pitch) / full_rotation_rad
-    progress = torch.clamp(progress, 0.0, 1.5)  # allow slight overshoot bonus
+    # pick rotation axis (we default to pitch for backflip)
+    if axis.lower() == "pitch":
+        rot = torch.abs(pitch)
+    elif axis.lower() == "roll":
+        rot = torch.abs(roll)
+    else:  # "yaw" or anything else
+        rot = torch.abs(yaw)
+
+    # normalized rotation progress
+    progress = torch.clamp(rot / full_rotation_rad, 0.0, 1.5)
 
     if air_only:
-        # Foot contact: 0 = airborne → accumulate
-        foot_contacts = env._contact_forces(sensors=sensor_cfg)
-        airborne = (foot_contacts < 1e-4).all(dim=1)
+        # airborne mask using contact sensor
+        contact_sensor = env.scene.sensors[sensor_cfg.name]
+        # net forces on selected bodies -> [N, num_bodies, 3] -> magnitudes [N, num_bodies]
+        foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+        # consider "no contact" when below small threshold (tune if needed)
+        airborne = (foot_f < 1.0).all(dim=1)               # [N]
         progress = progress * airborne.float()
 
-    # Upright bonus at landing
-    # upright if projected gravity ~ +Z
-    proj_g = env.projected_gravity()
-    upright = (proj_g[:, 2] > 0.85).float()
-    progress += upright * upright_bonus
+    # upright bonus at/after landing (projected gravity in body frame)
+    proj_g_b = env.scene["robot"].data.projected_gravity_b  # [N, 3]
+    upright = (proj_g_b[:, 2] > 0.85).float()               # ~ <31.8° from upright
+    progress = progress + upright * upright_bonus
 
     return progress
 
-def successful_backflip(env, sensor_cfg, upright_tol_rad: float, axis: str,
-                        min_airtime_s: float, post_land_stable_s: float,
-                        full_rotation_rad: float):
+
+def successful_backflip(
+    env: "ManagerBasedRLEnv",
+    sensor_cfg: SceneEntityCfg,
+    upright_tol_rad: float,
+    axis: str,
+    min_airtime_s: float,
+    post_land_stable_s: float,
+    full_rotation_rad: float,
+) -> torch.Tensor:
     """
-    Episode ends successfully when:
-    1. The robot achieved ≥ 360° rotation about pitch while airborne.
-    2. Landed upright.
-    3. Stayed stable for post_land_stable_s seconds.
+    Termination condition (bool tensor [N]):
+      1) ≥ full_rotation_rad about chosen axis (default: pitch) at some point while airborne
+      2) landed upright (within upright_tol_rad)
+      3) maintained stable foot contact for >= post_land_stable_s
     """
-    base_quat = env.root_state[:, 3:7]
-    _, pitch, _ = env.quat_to_euler_xyz(base_quat)
+    # orientation
+    root_state = env.scene["robot"].data.root_state
+    base_quat = root_state[:, 3:7]
+    roll, pitch, yaw = euler_xyz_from_quat(base_quat)
 
-    rotated = torch.abs(pitch) > (full_rotation_rad * 0.85)
+    if axis.lower() == "pitch":
+        rot = torch.abs(pitch)
+    elif axis.lower() == "roll":
+        rot = torch.abs(roll)
+    else:
+        rot = torch.abs(yaw)
 
-    proj_g = env.projected_gravity()
-    upright = (proj_g[:, 2] > torch.cos(upright_tol_rad)).float()
+    rotated = rot > (full_rotation_rad * 0.95)  # a bit stricter than 0.85
 
-    foot_contacts = env._contact_forces(sensors=sensor_cfg)
-    on_feet = (foot_contacts > 1e-4).all(dim=1)
+    # upright check using projected gravity in body frame
+    proj_g_b = env.scene["robot"].data.projected_gravity_b
+    # angle to +Z is arccos(proj_g_b[:,2]); upright if cos(angle) >= cos(upright_tol)
+    upright = proj_g_b[:, 2] >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
 
-    # Time conditions
-    # env.episode_step * env.sim.dt gives clock time
-    t = env.episode_step * env.sim.dt
-    stable = t > min_airtime_s
+    # contact and stability window
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)  # [N, num_feet]
+    on_feet_now = (foot_f > 1.0).all(dim=1)  # threshold ~1N; tune if needed
 
-    success = rotated & (upright.bool()) & on_feet.bool() & stable
+    # time in episode
+    t = env.episode_length_buf * env.step_dt  # [N]
+    stable_time = t >= (min_airtime_s + post_land_stable_s)
+
+    success = rotated & upright & on_feet_now & stable_time
     return success
-
