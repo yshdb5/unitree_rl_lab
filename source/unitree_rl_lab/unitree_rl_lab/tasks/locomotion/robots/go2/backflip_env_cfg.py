@@ -208,7 +208,6 @@ class RewardsCfg:
         weight=0.6,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": None,
             "threshold": 0.35,  # counts airtime after brief contact release
         },
     )
