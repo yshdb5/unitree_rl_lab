@@ -316,3 +316,14 @@ def post_flip_land_reward(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, mi
     jumped = (last_air.min(dim=1).values >= min_airtime_s)
 
     return (on_feet & jumped).float()
+
+def ang_vel_x_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize angular velocity in the x-direction (roll)."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_ang_vel_b[:, 0])
+
+
+def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize angular velocity in the z-direction (yaw)."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_ang_vel_b[:, 2])
