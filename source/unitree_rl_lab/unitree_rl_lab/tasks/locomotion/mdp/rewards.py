@@ -224,8 +224,6 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
 
-from isaaclab.utils.math import quat_to_euler_xyz  # at top with your other imports
-
 def backflip_progress(
     env: "ManagerBasedRLEnv",
     sensor_cfg: SceneEntityCfg,
