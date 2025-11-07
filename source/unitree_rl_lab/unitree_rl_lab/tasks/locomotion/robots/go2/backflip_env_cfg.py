@@ -20,6 +20,8 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
 from unitree_rl_lab.tasks.locomotion import mdp
+# Import the observation utils
+from unitree_rl_lab.tasks.locomotion import observations as obs_utils
 
 # --- simple flat terrain
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
@@ -183,6 +185,8 @@ class ObservationsCfg:
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, clip=(-100, 100), noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, clip=(-100, 100), noise=Unoise(n_min=-1.5, n_max=1.5))
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
+        # -- ADD THIS --
+        time_phase = ObsTerm(func=lambda env: obs_utils.gait_phase(env, period=1.0), clip=(-1, 1))
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -209,11 +213,11 @@ class RewardsCfg:
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=1.2, 
+        weight=1.2,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
-            "threshold": 0.5,  
+            "threshold": 0.5,
         },
     )
 
@@ -222,7 +226,7 @@ class RewardsCfg:
         weight=-0.4,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
-    
+
     upward_vel_air = RewTerm(
         func=mdp.upward_vel_air_airborne,
         weight=0.05,
@@ -266,7 +270,7 @@ class RewardsCfg:
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-1.0,
+        weight=-3.0,  # <-- CHANGE THIS
         params={
             "threshold": 1,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
@@ -290,7 +294,7 @@ class TerminationsCfg:
             "upright_tol_rad": 0.35,
             "axis": "pitch",
             "min_airtime_s": 0.15,
-            "post_land_stable_s": 0.4,
+            "post_land_stable_s": 0.2,  # <-- CHANGE THIS
             "full_rotation_rad": 2.0 * math.pi,
         },
     )
