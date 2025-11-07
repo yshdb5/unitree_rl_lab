@@ -20,8 +20,6 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
 from unitree_rl_lab.tasks.locomotion import mdp
-# --- FIX 1: Use relative import ---
-from .. import observations as obs_utils
 
 # --- simple flat terrain
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
@@ -185,8 +183,8 @@ class ObservationsCfg:
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, clip=(-100, 100), noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, clip=(-100, 100), noise=Unoise(n_min=-1.5, n_max=1.5))
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
-        # --- FIX 2: Add the time_phase observation ---
-        time_phase = ObsTerm(func=obs_utils.episode_time_phase, clip=(-1, 1))
+        # --- FIX 1: Add time_phase observation ---
+        time_phase = ObsTerm(func=mdp.episode_time_phase, clip=(-1, 1))
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -226,7 +224,7 @@ class RewardsCfg:
         weight=-0.4,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
-    
+
     upward_vel_air = RewTerm(
         func=mdp.upward_vel_air_airborne,
         weight=0.05,
@@ -270,7 +268,7 @@ class RewardsCfg:
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-3.0,  # --- FIX 3: Increase penalty ---
+        weight=-3.0,  # --- FIX 2: Increase penalty ---
         params={
             "threshold": 1,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
@@ -294,7 +292,7 @@ class TerminationsCfg:
             "upright_tol_rad": 0.35,
             "axis": "pitch",
             "min_airtime_s": 0.15,
-            "post_land_stable_s": 0.2,  # --- FIX 4: Make success easier ---
+            "post_land_stable_s": 0.2,  # --- FIX 3: Make success easier ---
             "full_rotation_rad": 2.0 * math.pi,
         },
     )
@@ -342,8 +340,8 @@ class RobotEnvCfg(ManagerBasedRLEnvCfg):
 class RobotPlayEnvCfg(RobotEnvCfg):
     """Small play config for visualization."""
 
-    def __post_init__(self_):
+    def __post_init__(self):
         super().__post_init__()
-        self_.scene.num_envs = 32
-        self_.scene.terrain.terrain_generator.num_rows = 1
-        self_.scene.terrain.terrain_generator.num_cols = 1
+        self.scene.num_envs = 32
+        self.scene.terrain.terrain_generator.num_rows = 1
+        self.scene.terrain.terrain_generator.num_cols = 1
