@@ -4,9 +4,9 @@ import torch
 from typing import TYPE_CHECKING
 
 try:
-    from isaaclab.utils.math import quat_apply_inverse, euler_xyz_from_quat
+    from isaaclab.utils.math import quat_apply_inverse
 except ImportError:
-    from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse, euler_xyz_from_quat
+    from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
@@ -241,45 +241,53 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
 def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str, full_rotation_rad: float,
                       upright_bonus: float = 0.5, air_only: bool = True,
                       landing_window_s: float = 0.6):
-    """Reward normalized rotation progress about the chosen axis (pitch for backflip)."""
+    """
+    Progress proxy: use angle-to-up from projected gravity in body frame.
+    0 rad = upright, π rad = upside down. Normalize by π (not 2π).
+    """
     robot_data = env.scene["robot"].data
-    base_quat = robot_data.root_quat_w  # [N,4]
-    roll, pitch, yaw = euler_xyz_from_quat(base_quat)
-
-    a = axis.lower()
-    rot = torch.abs(pitch if a == "pitch" else roll if a == "roll" else yaw)
-    progress = torch.clamp(rot / full_rotation_rad, 0.0, 1.5)
+    z = torch.clamp(robot_data.projected_gravity_b[:, 2], -1.0, 1.0)
+    angle_to_up = torch.acos(z)               
+    progress = torch.clamp(angle_to_up / torch.tensor(torch.pi, device=env.device), 0.0, 1.0)
 
     if air_only:
         contact_sensor = env.scene.sensors[sensor_cfg.name]
-        foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)  # [N, num_feet]
+        foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
         airborne = (foot_f < 1.0).all(dim=1)
         progress = progress * airborne.float()
 
-    proj_g_b = robot_data.projected_gravity_b
-    upright = (proj_g_b[:, 2] > 0.85).float()
+    upright = (z > 0.85).float()  
     return progress + upright * upright_bonus
-
 
 def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float, axis: str,
                         min_airtime_s: float, post_land_stable_s: float, full_rotation_rad: float):
-    """Successful episode when rotated ~360°, upright, and stably on feet for a short window."""
-    robot_data = env.scene["robot"].data
-    base_quat = robot_data.root_quat_w
-    roll, pitch, yaw = euler_xyz_from_quat(base_quat)
-
-    a = axis.lower()
-    rot = torch.abs(pitch if a == "pitch" else roll if a == "roll" else yaw)
-    rotated = rot > (full_rotation_rad * 0.95)
-
-    proj_g_b = robot_data.projected_gravity_b
-    upright = proj_g_b[:, 2] >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
+    """
+    Success when: was upside down in the air, then lands and stays upright on feet for a short window.
+    We don't try to detect literal 360° unwrapped; we require π rad (upside down) during the airborne phase
+    and a stable upright landing.
+    """
+    robot = env.scene["robot"]
+    z = torch.clamp(robot.data.projected_gravity_b[:, 2], -1.0, 1.0)
+    angle_to_up = torch.acos(z)  # [0, π]
 
     contact_sensor = env.scene.sensors[sensor_cfg.name]
     foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
-    on_feet = (foot_f > 1.0).all(dim=1)
+    on_feet_now = (foot_f > 1.0).all(dim=1)
 
-    t = env.episode_length_buf * env.step_dt
-    stable_time = t >= (min_airtime_s + post_land_stable_s)
+    # Require each foot to have been in the air sufficiently recently (jump happened)
+    last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]      # [N, 4]
+    jumped = (last_air.min(dim=1).values >= min_airtime_s)
 
-    return rotated & upright & on_feet & stable_time
+    # After landing, require they have been in contact for post_land_stable_s
+    last_contact = contact_sensor.data.last_contact_time[:, sensor_cfg.body_ids]
+    landed_stable = (last_contact.min(dim=1).values >= post_land_stable_s)
+
+    upright_now = z >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
+    was_upside_down = angle_to_up >= (0.95 * torch.tensor(torch.pi, device=env.device))
+
+    return jumped & was_upside_down & on_feet_now & landed_stable & upright_now
+
+def upward_vel_air(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    asset = env.scene[asset_cfg.name]
+    zvel = asset.data.root_lin_vel_w[:, 2]
+    return torch.clamp(zvel, min=0.0)

@@ -168,7 +168,7 @@ class ActionsCfg:
     """Action specs."""
 
     JointPositionAction = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=[".*"], scale=0.35, use_default_offset=True, clip={".*": (-100.0, 100.0)}
+        asset_name="robot", joint_names=[".*"], scale=0.55, use_default_offset=True, clip={".*": (-100.0, 100.0)}
     )
 
 
@@ -207,35 +207,44 @@ class ObservationsCfg:
 class RewardsCfg:
     """Rewards for jump → rotate → land backflip."""
 
-    # jump/airtime
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.6,
+        weight=1.2, 
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "base_velocity",   # required by term signature; ignored in our mdp impl
-            "threshold": 0.35,
+            "command_name": "base_velocity",
+            "threshold": 0.5,  
         },
     )
+
     air_time_variance = RewTerm(
         func=mdp.air_time_variance_penalty,
         weight=-0.4,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
+    
+    upward_vel_air = RewTerm(
+        func=lambda env: mdp.upward_vel_air(env) * env.scene.sensors["contact_forces"]
+            .data
+            .net_forces_w[:, :, :].norm(dim=-1)
+            .lt(1.0)
+            .all(dim=1)
+            .float(),
+        weight=0.05,
+    )
 
-    # rotation progress (implemented in mdp.rewards)
     backflip_progress = RewTerm(
         func=mdp.backflip_progress,
         weight=10.0,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "axis": "pitch",
-            "full_rotation_rad": 2.0 * math.pi,
+            "full_rotation_rad": math.pi,
             "upright_bonus": 0.5,
             "air_only": True,
             "landing_window_s": 0.6,
         },
-    )
+        )
 
     # regularizers
     base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
@@ -271,7 +280,6 @@ class TerminationsCfg:
     """Done terms for acrobatics."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.6})
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
