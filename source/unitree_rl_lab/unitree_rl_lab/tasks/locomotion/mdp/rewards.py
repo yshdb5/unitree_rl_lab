@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 from typing import TYPE_CHECKING
+import math
 
 try:
     from isaaclab.utils.math import quat_apply_inverse
