@@ -226,7 +226,7 @@ class RewardsCfg:
     # rotation progress (implemented in mdp.rewards)
     backflip_progress = RewTerm(
         func=mdp.backflip_progress,
-        weight=6.0,
+        weight=10.0,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "axis": "pitch",
@@ -239,7 +239,7 @@ class RewardsCfg:
 
     # regularizers
     base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
-    base_angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.02)
+    base_angular_velocity = RewTerm(func=mdp.ang_vel_x_l2, weight=-0.02)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0008)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.0e-7)
     joint_torques = RewTerm(func=mdp.joint_torques_l2, weight=-1.5e-4)
