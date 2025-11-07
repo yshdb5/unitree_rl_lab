@@ -241,7 +241,6 @@ class RewardsCfg:
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "axis": "pitch",
             "full_rotation_rad": math.pi,
-            "upright_bonus": 0.5,
             "air_only": True,
             "landing_window_s": 0.6,
         },

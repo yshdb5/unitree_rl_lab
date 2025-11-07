@@ -256,8 +256,7 @@ def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str, full_rotation_
         airborne = (foot_f < 1.0).all(dim=1)
         progress = progress * airborne.float()
 
-    upright = (z > 0.85).float()  
-    return progress + upright * upright_bonus
+    return progress
 
 def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float, axis: str,
                         min_airtime_s: float, post_land_stable_s: float, full_rotation_rad: float):
