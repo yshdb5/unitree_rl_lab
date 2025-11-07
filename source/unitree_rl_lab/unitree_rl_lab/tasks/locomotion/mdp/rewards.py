@@ -243,7 +243,7 @@ def backflip_progress(
     # --- base orientation (quaternion → euler)
     root_state = env.scene["robot"].data.root_state        # [N, 13] (pos 3, quat 4, lin vel 3, ang vel 3)
     base_quat = root_state[:, 3:7]                         # [N, 4]
-    roll, pitch, yaw = euler_xyz_from_quat(base_quat)      # each [N]
+    roll, pitch, yaw = euler_xyz_from_quat(base_quat)        # each [N]
 
     # pick rotation axis (we default to pitch for backflip)
     if axis.lower() == "pitch":
