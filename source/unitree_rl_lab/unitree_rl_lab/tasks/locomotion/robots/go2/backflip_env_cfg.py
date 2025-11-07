@@ -238,7 +238,7 @@ class RewardsCfg:
     )
 
     # regularizers
-    base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.8)
+    base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
     base_angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.02)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0008)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.0e-7)
@@ -246,7 +246,7 @@ class RewardsCfg:
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.06)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-6.0)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-5)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.6)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
 
     feet_slide = RewTerm(
         func=mdp.feet_slide,
