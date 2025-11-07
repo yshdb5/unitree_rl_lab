@@ -245,7 +245,16 @@ class RewardsCfg:
             "air_only": True,
             "landing_window_s": 0.6,
         },
-        )
+    )
+    
+    land_on_feet = RewTerm(
+        func=mdp.post_flip_land_reward,
+        weight=2.0,  # A good positive bonus for landing
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "min_airtime_s": 0.1, # a short jump counts
+        },
+    )
 
     # regularizers
     base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)

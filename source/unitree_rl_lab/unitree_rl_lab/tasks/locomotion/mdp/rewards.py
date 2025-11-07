@@ -302,3 +302,17 @@ def upward_vel_air_airborne(env, sensor_cfg: SceneEntityCfg = SceneEntityCfg("co
     airborne = (foot_f < 1.0).all(dim=1)    # [N]
 
     return zvel * airborne.float()
+
+def post_flip_land_reward(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, min_airtime_s: float) -> torch.Tensor:
+    """Rewards all feet being in contact AFTER a jump."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    
+    # Check for landing on feet (all feet have contact)
+    foot_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2] # [N, num_feet]
+    on_feet = (foot_forces.abs() > 1.0).all(dim=1) # [N]
+
+    # Check that a jump just happened (minimum air time was met)
+    last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]      # [N, 4]
+    jumped = (last_air.min(dim=1).values >= min_airtime_s)
+
+    return (on_feet & jumped).float()
