@@ -295,6 +295,45 @@ def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str,
         progress = progress * airborne.float()
     return progress
 
+def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float, axis: str,
+                        min_airtime_s: float, post_land_stable_s: float, full_rotation_rad: float):
+    """
+    Success: (i) went upside-down about target axis while airborne,
+             (ii) then landed and stayed upright on feet for a short window.
+    """
+    # Per-episode state
+    if not hasattr(env, "_flip_state"):
+        env._flip_state = {
+            "seen_upside_down": torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        }
+    # Reset flag on episode reset
+    at_reset = (env.episode_length_buf == 0)
+    if at_reset.any():
+        env._flip_state["seen_upside_down"][at_reset] = False
+
+    # Sensors
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    airborne = (foot_f < 1.0).all(dim=1)
+    on_feet_now = (foot_f > 1.0).all(dim=1)
+
+    angle = _axis_angle_from_up(env, axis)  # [0, π]
+    env._flip_state["seen_upside_down"] |= airborne & (angle >= 0.95 * math.pi)
+
+    # Jumped & stable landing window
+    last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids].min(dim=1).values
+    jumped = last_air >= min_airtime_s
+    last_contact = contact_sensor.data.last_contact_time[:, sensor_cfg.body_ids].min(dim=1).values
+    landed_stable = last_contact >= post_land_stable_s
+
+    # Upright now
+    up_b = env.scene["robot"].data.projected_gravity_b
+    upright_now = up_b[:, 2] >= torch.cos(torch.tensor(upright_tol_rad, device=env.device))
+
+    success = jumped & env._flip_state["seen_upside_down"] & on_feet_now & landed_stable & upright_now
+    env._flip_state["seen_upside_down"][success] = False  # one-shot
+    return success
+
 def upward_vel_air_airborne(env, sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
                             asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
     """
