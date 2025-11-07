@@ -7,7 +7,7 @@ try:
     from isaaclab.utils.math import quat_apply_inverse, euler_xyz_from_quat
 except ImportError:
     from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse, euler_xyz_from_quat
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets impofrt Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 
@@ -114,6 +114,23 @@ def feet_height_body(
     reward = torch.sum(foot_z_target_error * foot_velocity_tanh, dim=1)
     reward *= torch.linalg.norm(env.command_manager.get_command(command_name), dim=1) > 0.1
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+def feet_air_time(env, sensor_cfg: SceneEntityCfg, command_name: str, threshold: float):
+    """
+    Reward airtime: encourages pushing off ground into a jump.
+    command_name is ignored for backflip tasks but must exist.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+
+    # Air time per foot (tracked by contact sensor)
+    # last_air_time increases while foot is airborne
+    air_times = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
+
+    # Reward = mean airtime, clipped so it doesn't explode
+    reward = torch.mean(torch.clamp(air_times, min=0.0, max=threshold), dim=1)
+
+    # Do NOT scale reward by command — we want jumping even without locomotion
     return reward
 
 

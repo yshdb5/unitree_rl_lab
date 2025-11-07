@@ -163,6 +163,15 @@ class ActionsCfg:
         asset_name="robot", joint_names=[".*"], scale=0.35, use_default_offset=True, clip={".*": (-100.0, 100.0)}
     )
 
+@configclass
+class CommandsCfg:
+    """Dummy command so reward term does not crash."""
+    backflip_dummy_cmd = mdp.ConstantCommandCfg(
+        command_name="backflip_dummy_cmd",
+        value=[0.0, 0.0, 0.0],               # no influence
+        resampling_time_range=(9999.0, 9999.0),
+    )
+
 
 @configclass
 class ObservationsCfg:
@@ -208,8 +217,8 @@ class RewardsCfg:
         weight=0.6,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "command_name": "backflip_dummy_cmd",
             "threshold": 0.35,  # counts airtime after brief contact release
-            "command_name": "base_velocity",
         },
     )
     # Keep feet airtime across legs somewhat coordinated (don’t flail)
@@ -332,7 +341,7 @@ class RobotEnvCfg(ManagerBasedRLEnvCfg):
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
 
-    commands = None
+    commands: CommandsCfg = CommandsCfg()
 
     # MDP blocks
     rewards: RewardsCfg = RewardsCfg()
