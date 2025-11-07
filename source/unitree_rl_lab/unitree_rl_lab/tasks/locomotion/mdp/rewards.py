@@ -7,7 +7,7 @@ try:
     from isaaclab.utils.math import quat_apply_inverse, euler_xyz_from_quat
 except ImportError:
     from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse, euler_xyz_from_quat
-from isaaclab.assets impofrt Articulation, RigidObject
+from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 
