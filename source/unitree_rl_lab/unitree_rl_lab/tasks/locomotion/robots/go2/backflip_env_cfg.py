@@ -17,7 +17,6 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
-from isaaclab.utils.curriculum import LinearTimeCurriculumCfg as LinCurr
 
 from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
 from unitree_rl_lab.tasks.locomotion import mdp
@@ -332,15 +331,14 @@ class TerminationsCfg:
         },
     )
 
-
 @configclass
 class CurriculumCfg:
-    termination_penalty_scale = LinCurr(
-        key="termination_penalty_scale",  # Doit correspondre au 'name' de l'Étape 2
-        start_value=0.0,    # Phase 1: Pénalité à 0
-        end_value=-3.0,     # Phase 2: Pénalité complète
-        start_time=0.2,     # Commence à augmenter après 20% de l'entraînement
-        end_time=0.8,       # Atteint la pénalité complète à 80% de l'entraînement
+    termination_penalty_scale = CurrTerm(
+        name="termination_penalty_scale",
+        initial_value=0.0,       # valeur au début
+        target_value=-3.0,       # valeur finale
+        curriculum_duration=1_000_000,  # progression linéaire sur 1M steps
+        scheduling="linear",
     )
 
 
