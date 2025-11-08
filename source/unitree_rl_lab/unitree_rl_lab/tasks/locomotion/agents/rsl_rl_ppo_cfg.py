@@ -27,6 +27,7 @@ class TeacherActorCriticCfg(RslRlPpoActorCriticCfg):
 
 @configclass
 class TeacherPPOCfg(RslRlPpoAlgorithmCfg):
+    class_name = "PPO"
     value_loss_coef = 1.0
     use_clipped_value_loss = True
     clip_param = 0.2
@@ -59,7 +60,7 @@ class StudentActorCriticCfg(RslRlPpoActorCriticCfg):
 
 @configclass
 class StudentPPOCfg(RslRlPpoAlgorithmCfg):
-    # standard PPO knobs
+    class_name = "KLPPO"
     value_loss_coef = 1.0
     use_clipped_value_loss = True
     clip_param = 0.2
