@@ -17,6 +17,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
+from unitree_rl_lab.tasks.locomotion.mdp import termination_penalty_func
 
 from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
 from unitree_rl_lab.tasks.locomotion import mdp
@@ -315,10 +316,9 @@ class RewardsCfg:
     )
 
     termination_penalty = RewTerm(
-        func=mdp.termination_penalty,  # <-- use existing MDP term
-        weight="termination_penalty_scale",  # <-- reference curriculum by key
+        func=termination_penalty_func,
+        weight="termination_penalty_scale",
     )
-
 
 @configclass
 class TerminationsCfg:
