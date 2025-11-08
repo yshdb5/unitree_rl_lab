@@ -331,11 +331,17 @@ class TerminationsCfg:
         },
     )
 
+@configclass
 class CurriculumCfg:
+    """Configuration du curriculum d'entraînement."""
+
     termination_penalty_scale = CurrTerm(
-        begin=0.0,          # start of training → pas de pénalité au début
-        end=-3.0,           # vers la fin → pénalisation forte si crash
-        num_steps=1_000_000 # ramp linéaire
+        func=mdp.modify_reward_weight,
+        params={
+            "term_name": "undesired_contacts",
+            "weight": -3.0,  # Valeur finale
+            "num_steps": 1_000_000,  # Durée de la montée en puissance
+        },
     )
 
 
