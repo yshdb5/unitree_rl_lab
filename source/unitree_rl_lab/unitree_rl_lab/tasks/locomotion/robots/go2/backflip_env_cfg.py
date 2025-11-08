@@ -304,13 +304,19 @@ class RewardsCfg:
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=CurrTerm(name="termination_penalty_scale", value=0.0),
+        weight="termination_penalty_scale",  # <-- reference curriculum by key
         params={
             "threshold": 1,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[
-                "base", "Head_.*", ".*_hip", ".*_thigh", ".*_calf"
-            ]),
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["base", "Head_.*", ".*_hip", ".*_thigh", ".*_calf"]
+            ),
         },
+    )
+
+    termination_penalty = RewTerm(
+        func=mdp.termination_penalty,  # <-- use existing MDP term
+        weight="termination_penalty_scale",  # <-- reference curriculum by key
     )
 
 
@@ -334,10 +340,9 @@ class TerminationsCfg:
 @configclass
 class CurriculumCfg:
     termination_penalty_scale = CurrTerm(
-        name="termination_penalty_scale",
-        initial_value=0.0,       # valeur au début
-        target_value=-3.0,       # valeur finale
-        curriculum_duration=1_000_000,  # progression linéaire sur 1M steps
+        initial_value=0.0,
+        target_value=-3.0,
+        curriculum_duration=1_000_000,
         scheduling="linear",
     )
 
