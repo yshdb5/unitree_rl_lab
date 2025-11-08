@@ -17,6 +17,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
+from isaaclab.managers import LinearTimeCurriculumCfg as LinCurr
 
 from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
 from unitree_rl_lab.tasks.locomotion import mdp
@@ -126,7 +127,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "yaw": (-0.1, 0.1)},  
+            "pose_range": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "yaw": (-0.1, 0.1)},
             "velocity_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
                             "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
         },
@@ -274,7 +275,7 @@ class RewardsCfg:
             "landing_window_s": 0.6,
         },
     )
-    
+
     land_on_feet = RewTerm(
         func=mdp.post_flip_land_reward,
         weight=2.0,  # A good positive bonus for landing
@@ -304,10 +305,12 @@ class RewardsCfg:
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-3.0,  # --- FIX 2: Increase penalty ---
+        weight=CurrTerm(name="termination_penalty_scale", value=0.0),
         params={
             "threshold": 1,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[
+                "base", "Head_.*", ".*_hip", ".*_thigh", ".*_calf"
+            ]),
         },
     )
 
@@ -317,10 +320,6 @@ class TerminationsCfg:
     """Done terms for acrobatics."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    base_contact = DoneTerm(
-        func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
-    )
     successful_backflip = DoneTerm(
         func=mdp.successful_backflip,
         params={
@@ -336,9 +335,13 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """(Optional) curriculum — disabled for now to keep logs clean."""
-    # You can add scalar schedules later if needed
-    pass
+    termination_penalty_scale = LinCurr(
+        key="termination_penalty_scale",  # Doit correspondre au 'name' de l'Étape 2
+        start_value=0.0,    # Phase 1: Pénalité à 0
+        end_value=-3.0,     # Phase 2: Pénalité complète
+        start_time=0.2,     # Commence à augmenter après 20% de l'entraînement
+        end_time=0.8,       # Atteint la pénalité complète à 80% de l'entraînement
+    )
 
 
 @configclass
