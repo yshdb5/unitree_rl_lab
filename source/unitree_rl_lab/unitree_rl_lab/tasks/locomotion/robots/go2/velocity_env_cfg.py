@@ -183,7 +183,6 @@ class EventCfg:
         params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
     )
 
-
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
@@ -232,7 +231,7 @@ class ObservationsCfg:
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
 
         def __post_init__(self):
-            # self.history_length = 5
+            self.history_length = 16
             self.enable_corruption = True
             self.concatenate_terms = True
 
@@ -413,3 +412,29 @@ class RobotPlayEnvCfg(RobotEnvCfg):
         self.scene.terrain.terrain_generator.num_rows = 2
         self.scene.terrain.terrain_generator.num_cols = 1
         self.commands.base_velocity.ranges = self.commands.base_velocity.limit_ranges
+        
+@configclass
+class TeacherObservationsCfg(ObservationsCfg):
+    @configclass
+    class PolicyCfg(ObsGroup):
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, clip=(-100, 100))
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2, clip=(-100, 100))
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, clip=(-100, 100))
+        velocity_commands = ObsTerm(func=mdp.generated_commands, clip=(-100, 100),
+                                    params={"command_name": "base_velocity"})
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, clip=(-100, 100))
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, clip=(-100, 100))
+        joint_effort  = ObsTerm(func=mdp.joint_effort,  scale=0.01, clip=(-100, 100))
+        last_action   = ObsTerm(func=mdp.last_action, clip=(-100, 100))
+        def __post_init__(self):
+            self.history_length = 1            
+            self.enable_corruption = False     
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+
+@configclass
+class TeacherRobotEnvCfg(RobotEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.observations = TeacherObservationsCfg()   
