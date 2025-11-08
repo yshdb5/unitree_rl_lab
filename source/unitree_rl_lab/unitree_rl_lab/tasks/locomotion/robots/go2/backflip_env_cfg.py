@@ -331,13 +331,11 @@ class TerminationsCfg:
         },
     )
 
-@configclass
 class CurriculumCfg:
     termination_penalty_scale = CurrTerm(
-        initial_value=0.0,
-        target_value=-3.0,
-        curriculum_duration=1_000_000,
-        scheduling="linear",
+        begin=0.0,          # start of training → pas de pénalité au début
+        end=-3.0,           # vers la fin → pénalisation forte si crash
+        num_steps=1_000_000 # ramp linéaire
     )
 
 
