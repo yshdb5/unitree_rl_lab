@@ -304,7 +304,7 @@ class RewardsCfg:
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight="termination_penalty_scale",
+        weight=0.0,
         params={
             "threshold": 1,
             "sensor_cfg": SceneEntityCfg(
@@ -333,16 +333,18 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """Configuration du curriculum d'entraînement."""
+    """Augmente progressivement la difficulté."""
 
-    termination_penalty_scale = CurrTerm(
-        func=mdp.modify_reward_weight,
+    undesired_contacts_penalty = CurrTerm(
+        func=mdp.progressive_penalty_weight,
         params={
             "term_name": "undesired_contacts",
-            "weight": -3.0,  # Valeur finale
-            "num_steps": 1_000_000,  # Durée de la montée en puissance
+            "start_weight": 0.0,    # Début : pas de pénalité
+            "end_weight": -3.0,     # Fin : forte pénalité
+            "num_steps": 1_000_000, # Sur 1M de pas
         },
     )
+
 
 
 @configclass

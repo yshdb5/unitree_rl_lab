@@ -65,7 +65,7 @@ def scalar_schedule(env, target_attr, start, end, num_steps):
     Linearly interpolates a parameter across training.
     """
     progress = env.training_step / max(1, num_steps)
-    progress = torch.clamp(progress, 0.0, 1.0)
+    progress = torch.clam(progress, 0.0, 1.0)
     value = start + progress * (end - start)
 
     # Apply nested attribute update
@@ -75,3 +75,35 @@ def scalar_schedule(env, target_attr, start, end, num_steps):
     setattr(obj, target_attr[-1], value)
 
     return value
+
+def progressive_penalty_weight(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    term_name: str,
+    start_weight: float = 0.0,
+    end_weight: float = -3.0,
+    num_steps: int = 1_000_000,
+) -> float:
+    """Augmente progressivement le poids d'une pénalité de récompense.
+
+    Args:
+        env: L'environnement RL
+        env_ids: IDs des environnements (non utilisé mais requis)
+        term_name: Nom du terme de récompense à modifier
+        start_weight: Poids initial (ex: 0.0 = pas de pénalité)
+        end_weight: Poids final (ex: -3.0 = forte pénalité)
+        num_steps: Nombre de pas pour atteindre le poids final
+
+    Returns:
+        Le poids actuel basé sur la progression
+    """
+    # Calculer la progression linéaire
+    progress = min(env.common_step_counter / num_steps, 1.0)
+    current_weight = start_weight + (end_weight - start_weight) * progress
+
+    # Mettre à jour dynamiquement le poids dans le reward manager
+    if term_name in env.reward_manager._term_cfgs:
+        env.reward_manager._term_cfgs[term_name].weight = current_weight
+
+    return current_weight
+
