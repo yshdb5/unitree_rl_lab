@@ -245,3 +245,8 @@ def early_termination_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:
     terminated = env.termination_manager.terminated.clone()
     terminated[env.termination_manager.time_outs] = 0
     return terminated.float()
+
+def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize not being upright (z-axis of base in world frame pointing up)."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    return torch.square(1 - asset.data.projected_gravity_b[:, 2])

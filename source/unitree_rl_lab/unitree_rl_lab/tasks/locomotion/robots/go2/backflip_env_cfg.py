@@ -119,6 +119,9 @@ class RewardsCfg:
     # 4. Penalize early termination (weight starts at 0 and is increased by curriculum)
     early_termination = RewTerm(func=mdp.early_termination_penalty, weight=0.0)
 
+    # 5. Penalize not being upright (to encourage landing on feet)
+    penalize_not_upright = RewTerm(func=mdp.upward, weight=-0.5)
+
     # Regularization
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
@@ -210,3 +213,4 @@ class RobotPlayEnvCfg(RobotEnvCfg):
                 "velocity_range": (0.0, 0.0),
             },
         )
+        # observation noise is disabled by default in play mode
