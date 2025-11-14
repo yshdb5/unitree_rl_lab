@@ -108,7 +108,7 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Reward angular velocity perpendicular to sagittal plane (pitch)
-    reward_pitch_velocity = RewTerm(func=mdp.backflip_pitch_velocity, weight=4.0)
+    reward_pitch_velocity = RewTerm(func=mdp.backflip_pitch_velocity, weight=3.0)
 
     # 2. Penalize other angular velocities (roll, yaw)
     penalize_roll_yaw_velocity = RewTerm(func=mdp.backflip_roll_yaw_velocity, weight=-1.0)
@@ -123,7 +123,7 @@ class RewardsCfg:
     penalize_not_upright = RewTerm(func=mdp.upward, weight=-3.0)
 
     # 6. Reward height to encourage jumping
-    jump_height = RewTerm(func=mdp.reward_height, weight=4.0)
+    jump_height = RewTerm(func=mdp.reward_height, weight=3.0)
 
     # Regularization
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
