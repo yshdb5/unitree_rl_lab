@@ -331,16 +331,6 @@ class TerminationsCfg:
         },
     )
 
-    undesired_contact = DoneTerm(
-        func=mdp.check_undesired_contacts,
-        params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["base", "Head_.*", ".*_hip", ".*_thigh", ".*_calf"],
-            ),
-        },
-    )
-
 @configclass
 class CurriculumCfg:
     """Augmente progressivement la difficulté."""
