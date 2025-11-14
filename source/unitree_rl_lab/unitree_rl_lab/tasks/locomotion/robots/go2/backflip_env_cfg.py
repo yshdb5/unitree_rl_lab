@@ -233,7 +233,7 @@ class RewardsCfg:
     )
 
     # discourage yaw spin only in air
-    yaw_spin_air = RewTerm(
+    non_yaw_spin_air = RewTerm(
         func=mdp.yaw_rate_penalty_air,
         weight=-0.30,
         params={
@@ -330,6 +330,16 @@ class TerminationsCfg:
             "full_rotation_rad": 2.0 * math.pi,
         },
     )
+    undesired_contact = DoneTerm(
+        func=mdp.undesired_contacts,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["base", "Head_.*", ".*_hip", ".*_thigh", ".*_calf"],
+            ),
+            "threshold": 1,
+        },
+    )
 
 @configclass
 class CurriculumCfg:
@@ -344,7 +354,6 @@ class CurriculumCfg:
             "num_steps": 1_000_000, # Sur 1M de pas
         },
     )
-
 
 
 @configclass
