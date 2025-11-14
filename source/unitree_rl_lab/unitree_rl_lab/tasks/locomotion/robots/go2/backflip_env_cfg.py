@@ -326,18 +326,18 @@ class TerminationsCfg:
             "upright_tol_rad": 0.35,
             "axis": "pitch",
             "min_airtime_s": 0.15,
-            "post_land_stable_s": 0.2,  # --- FIX 3: Make success easier ---
+            "post_land_stable_s": 0.2,
             "full_rotation_rad": 2.0 * math.pi,
         },
     )
+
     undesired_contact = DoneTerm(
-        func=mdp.undesired_contacts,
+        func=mdp.check_undesired_contacts,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
                 body_names=["base", "Head_.*", ".*_hip", ".*_thigh", ".*_calf"],
             ),
-            "threshold": 1,
         },
     )
 

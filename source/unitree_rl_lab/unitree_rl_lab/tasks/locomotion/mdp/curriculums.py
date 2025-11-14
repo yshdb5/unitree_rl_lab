@@ -107,3 +107,15 @@ def progressive_penalty_weight(
 
     return current_weight
 
+def check_undesired_contacts(
+        env: ManagerBasedRLEnv,
+        sensor_cfg: SceneEntityCfg,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+
+    is_contact = contact_sensor.data.current_contact[:, sensor_cfg.body_ids]
+
+    return torch.any(is_contact, dim=1)
+
