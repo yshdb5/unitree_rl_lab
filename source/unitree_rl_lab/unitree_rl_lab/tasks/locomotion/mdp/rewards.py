@@ -362,17 +362,17 @@ def post_flip_land_reward(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg,
 
     return (on_feet & jumped).float() * time_mask.float()
 
-def penalize_feet_height_before_flip(env: ManagerBasedRLEnv, 
-                                     asset_cfg: SceneEntityCfg,
-                                     max_time_s: float = 0.5):
-    """Penalizes low feet height (not tucked) before the flip."""
-    asset: RigidObject = env.scene[asset_cfg.name]
-    base_pos_z = asset.data.root_pos_w[:, 2].unsqueeze(1)
-    foot_pos_z = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
-
-    foot_height = foot_pos_z - env.scene.terrain.data.terrain_height_w.unsqueeze(1)
+def penalize_feet_contact_before_flip(env: ManagerBasedRLEnv, 
+                                      sensor_cfg: SceneEntityCfg,
+                                      max_time_s: float = 0.5):
+    """Penalizes feet being in contact with the ground (not tucked) before the flip."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     
-    penalty = torch.sum(foot_height < 0.05, dim=1).float()
+    foot_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+    
+    is_contact = (foot_forces > 1.0) 
+    
+    penalty = torch.sum(is_contact, dim=1).float()
 
     current_time_s = env.episode_length_buf * env.step_dt
     time_mask = (current_time_s < max_time_s)

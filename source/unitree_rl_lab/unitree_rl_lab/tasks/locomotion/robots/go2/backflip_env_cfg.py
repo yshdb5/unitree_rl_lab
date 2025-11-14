@@ -209,10 +209,10 @@ class RewardsCfg:
 
     # --- Phase 1: Tuck (t < 0.5s) ---
     tuck_penalty = RewTerm(
-        func=mdp.penalize_feet_height_before_flip,
-        weight=-10.0, 
+        func=mdp.penalize_feet_contact_before_flip,
+        weight=-10.0,  
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"), 
             "max_time_s": 0.5,
         },
     )
