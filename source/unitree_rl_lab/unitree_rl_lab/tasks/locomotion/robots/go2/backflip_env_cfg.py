@@ -319,6 +319,17 @@ class TerminationsCfg:
     """Done terms for acrobatics."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+
+    base_height = DoneTerm(
+        func=mdp.root_height_below_minimum,
+        params={"minimum_height": 0.15}
+    )
+
+    bad_orientation = DoneTerm(
+        func=mdp.bad_orientation,
+        params={"limit_angle": 1.0}
+    )
+
     successful_backflip = DoneTerm(
         func=mdp.successful_backflip,
         params={
