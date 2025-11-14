@@ -333,18 +333,19 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """Augmente progressivement la difficulté."""
+    """Implémente la stratégie en deux phases du papier."""
 
     undesired_contacts_penalty = CurrTerm(
-        func=mdp.progressive_penalty_weight,
+        func=mdp.adaptive_penalty_weight,  # <-- CHANGÉ
         params={
-            "term_name": "undesired_contacts",
-            "start_weight": 0.0,    # Début : pas de pénalité
-            "end_weight": -3.0,     # Fin : forte pénalité
-            "num_steps": 1_000_000, # Sur 1M de pas
+            "target_term_name": "undesired_contacts", # <-- Nom du terme à pénaliser
+            "monitor_reward_term": "backflip_progress", # <-- Nom du terme à surveiller
+            "reward_threshold": 2.0,  # <-- Seuil pour déclencher la Phase 2
+            "start_weight": 0.0,      # Phase 1: pas de pénalité
+            "end_weight": -3.0,       # Phase 2: forte pénalité
+            "num_steps_to_ramp": 1_000_000, # Durée de la rampe
         },
     )
-
 
 
 @configclass

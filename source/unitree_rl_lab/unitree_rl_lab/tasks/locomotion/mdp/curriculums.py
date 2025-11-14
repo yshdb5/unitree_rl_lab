@@ -107,3 +107,63 @@ def progressive_penalty_weight(
 
     return current_weight
 
+def adaptive_penalty_weight(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    target_term_name: str,
+    monitor_reward_term: str,
+    reward_threshold: float,
+    start_weight: float = 0.0,
+    end_weight: float = -3.0,
+    num_steps_to_ramp: int = 1_000_000,
+) -> float:
+    """
+    Augmente le poids d'une pénalité, MAIS seulement APRÈS qu'un autre
+    terme de récompense (monitor_reward_term) a dépassé un seuil.
+    Ceci correspond à la stratégie en deux phases du papier.
+    """
+
+    # 1. Initialiser l'état du curriculum (la 'phase') si non existant
+    if not hasattr(env, "_curriculum_phase_trigger"):
+        # 0 = Phase 1 (avant le seuil, pénalité = start_weight)
+        # 1 = Phase 2 (après le seuil, rampe en cours)
+        # 2 = Phase 2 (rampe terminée, pénalité = end_weight)
+        env._curriculum_phase_trigger = 0
+        env._curriculum_phase_start_step = 0
+        print(f"*** CURRICULUM: Phase 1. '{target_term_name}' poids = {start_weight:.2f} ***")
+        print(f"*** CURRICULUM: En attente de '{monitor_reward_term}' > {reward_threshold:.2f} ***")
+
+    current_weight = start_weight
+
+    # 2. Vérifier si le seuil de récompense est atteint (Phase 1)
+    if env._curriculum_phase_trigger == 0:
+        # Vérifier la récompense moyenne (logique basée sur lin_vel_cmd_levels)
+        # Fait la vérification à la fin d'un épisode pour avoir des données complètes
+        if env.common_step_counter % env.max_episode_length == 0 and len(env_ids) > 0:
+            # Calcule la récompense moyenne par seconde
+            avg_reward = torch.mean(env.reward_manager._episode_sums[monitor_reward_term][env_ids]) / env.max_episode_length_s
+
+            # Le seuil est-il atteint ?
+            if avg_reward > reward_threshold:
+                print(f"*** CURRICULUM: '{monitor_reward_term}' a atteint {avg_reward:.2f} (seuil: {reward_threshold}).")
+                print(f"*** CURRICULUM: Phase 2. Démarrage de la rampe pour '{target_term_name}'. ***")
+                env._curriculum_phase_trigger = 1
+                env._curriculum_phase_start_step = env.common_step_counter
+                current_weight = start_weight
+    
+    # 3. Appliquer la rampe (Phase 2)
+    elif env._curriculum_phase_trigger == 1: # Rampe en cours
+        progress = min((env.common_step_counter - env._curriculum_phase_start_step) / num_steps_to_ramp, 1.0)
+        current_weight = start_weight + (end_weight - start_weight) * progress
+        if progress >= 1.0:
+            env._curriculum_phase_trigger = 2 # Rampe terminée
+            print(f"*** CURRICULUM: Rampe terminée. '{target_term_name}' poids = {end_weight:.2f} ***")
+    
+    else: # Phase 2 (rampe terminée)
+        current_weight = end_weight
+    
+    # 4. Mettre à jour le poids dans le reward manager
+    if target_term_name in env.reward_manager._term_cfgs:
+        env.reward_manager._term_cfgs[target_term_name].weight = current_weight
+
+    return current_weight
