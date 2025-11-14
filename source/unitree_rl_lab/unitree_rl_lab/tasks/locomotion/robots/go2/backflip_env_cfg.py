@@ -160,7 +160,7 @@ class CurriculumCfg:
 
 
 @configclass
-class BackflipEnvCfg(ManagerBasedRLEnvCfg):
+class RobotEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the backflip environment."""
 
     scene: RobotSceneCfg = RobotSceneCfg(num_envs=4096, env_spacing=2.5)
