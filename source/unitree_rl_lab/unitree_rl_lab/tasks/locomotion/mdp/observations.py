@@ -17,7 +17,3 @@ def gait_phase(env: ManagerBasedRLEnv, period: float) -> torch.Tensor:
     phase[:, 0] = torch.sin(global_phase * torch.pi * 2.0)
     phase[:, 1] = torch.cos(global_phase * torch.pi * 2.0)
     return phase
-
-def episode_time_phase(env: ManagerBasedRLEnv):
-    """Returns a time phase (sin/cos) over a 1.0 second period."""
-    return gait_phase(env, period=1.0)
