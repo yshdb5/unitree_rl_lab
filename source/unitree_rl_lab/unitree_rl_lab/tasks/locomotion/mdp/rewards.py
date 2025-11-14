@@ -302,7 +302,9 @@ def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str,
     if air_only:
         contact_sensor = env.scene.sensors[sensor_cfg.name]
 
-        airborne = (foot_f < 1.0).all(dim=1)
+        foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
+
+        airborne = (foot_f < 1.0).all(dim=1)  # <-- 'foot_f' est maintenant défini
         last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids].min(dim=1).values
         is_real_jump = (last_air >= min_airtime_for_progress)
 
