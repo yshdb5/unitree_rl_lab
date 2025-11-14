@@ -229,7 +229,7 @@ def backflip_pitch_velocity(
     ) -> torch.Tensor:
     """Reward positive pitch angular velocity for backflip."""
     asset: Articulation = env.scene[asset_cfg.name]
-    return -asset.data.root_ang_vel_b[:, 1]
+    return torch.square(-asset.data.root_ang_vel_b[:, 1])
 
 def backflip_roll_yaw_velocity(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
@@ -256,4 +256,4 @@ def reward_height(
     ) -> torch.Tensor:
     """Rewards the robot for being high in the air."""
     asset: Articulation = env.scene[asset_cfg.name]
-    return torch.clamp(asset.data.root_pos_w[:, 2] - 0.3, min=0.0)
+    return torch.square(torch.clamp(asset.data.root_pos_w[:, 2] - 0.3, min=0.0))
