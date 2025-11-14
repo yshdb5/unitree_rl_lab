@@ -250,3 +250,10 @@ def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("r
     """Penalize not being upright (z-axis of base in world frame pointing up)."""
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.square(1 - asset.data.projected_gravity_b[:, 2])
+
+def reward_height(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    ) -> torch.Tensor:
+    """Rewards the robot for being high in the air."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    return torch.clamp(asset.data.root_pos_w[:, 2] - 0.3, min=0.0)
