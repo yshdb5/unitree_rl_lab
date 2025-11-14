@@ -272,6 +272,7 @@ class RewardsCfg:
             "upright_bonus": 0.0,
             "air_only": True,
             "landing_window_s": 0.6,
+            "min_airtime_for_progress": 0.1
         },
     )
 

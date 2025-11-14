@@ -283,17 +283,24 @@ def target_axis_rate_air(env, sensor_cfg: SceneEntityCfg, axis: str,
 
 def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str,
                       full_rotation_rad: float,
+                    min_airtime_for_progress: float = 0.1,
                       upright_bonus: float = 0.0,  # disabled
                       air_only: bool = True,
                       landing_window_s: float = 0.6):
     """Axis-aware progress in [0,1]; only counts in air if air_only=True."""
-    angle = _axis_angle_from_up(env, axis)              # [0, π]
+    angle = _axis_angle_from_up(env, axis)
     progress = torch.clamp(angle / math.pi, 0.0, 1.0)
+
     if air_only:
         contact_sensor = env.scene.sensors[sensor_cfg.name]
         foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
         airborne = (foot_f < 1.0).all(dim=1)
-        progress = progress * airborne.float()
+
+        last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids].min(dim=1).values
+        is_real_jump = (last_air >= min_airtime_for_progress)
+
+        progress = progress * airborne.float() * is_real_jump.float()
+
     return progress
 
 def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float, axis: str,
