@@ -179,3 +179,34 @@ class RobotEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
         self.scene.contact_forces.update_period = self.sim.dt
+
+
+@configclass
+class RobotPlayEnvCfg(RobotEnvCfg):
+    """Configuration for the backflip environment for play."""
+
+    def __post_init__(self):
+        """Post initialization."""
+        super().__post_init__()
+        # set number of environments to a small number for play
+        self.scene.num_envs = 32
+        # disable curriculum
+        self.curriculum: CurriculumCfg = None
+        # disable events other than reset
+        self.events = EventCfg()
+        self.events.reset_base = EventTerm(
+            func=mdp.reset_root_state_uniform,
+            mode="reset",
+            params={
+                "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+                "velocity_range": {},
+            },
+        )
+        self.events.reset_robot_joints = EventTerm(
+            func=mdp.reset_joints_by_scale,
+            mode="reset",
+            params={
+                "position_range": (1.0, 1.0),
+                "velocity_range": (0.0, 0.0),
+            },
+        )
