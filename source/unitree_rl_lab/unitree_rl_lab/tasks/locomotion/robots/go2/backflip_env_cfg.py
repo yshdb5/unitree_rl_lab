@@ -205,95 +205,89 @@ class ObservationsCfg:
 
 @configclass
 class RewardsCfg:
-    """Rewards for jump → rotate → land backflip."""
+    """Rewards for jump -> rotate -> land backflip (Genesis-style)."""
 
-    feet_air_time = RewTerm(
-        func=mdp.feet_air_time,
-        weight=1.2,
+    # --- Phase 1: Tuck (t < 0.5s) ---
+    tuck_penalty = RewTerm(
+        func=mdp.penalize_feet_height_before_flip,
+        weight=-10.0, 
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "base_velocity",
-            "threshold": 0.5,
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "max_time_s": 0.5,
         },
     )
+
+    # --- Phase 2: Jump (t = 0.5s - 0.75s) ---
+    upward_vel_air = RewTerm(
+        func=mdp.upward_vel_air_airborne,
+        weight=2.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "asset_cfg": SceneEntityCfg("robot"),
+            "takeoff_start_s": 0.5,  
+            "takeoff_end_s": 0.75,  
+        },
+    )
+
+    # --- Phase 2: Rotate (t = 0.5s - 1.0s) ---
+    pitch_rate_air = RewTerm(
+        func=mdp.target_axis_rate_air,
+        weight=1.5, # Also a primary positive reward
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "axis": "pitch",
+            "rotate_start_s": 0.5,  
+            "rotate_end_s": 1.0,   
+        },
+    )
+
+    # --- Phase 3: Land (t > 1.4s) ---
+    land_on_feet = RewTerm(
+        func=mdp.post_flip_land_reward,
+        weight=4.0,  
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "min_airtime_s": 0.1,
+            "land_window_start_s": 1.4, 
+        },
+    )
+
+    backflip_progress = RewTerm(
+        func=mdp.backflip_progress,
+        weight=14.0,  # Kept high to dominate local optima
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "axis": "pitch",
+            "full_rotation_rad": math.pi,
+            "air_only": True,
+            "landing_window_s": 0.6,
+        },
+    )
+
+    yaw_penalty = RewTerm(
+        func=mdp.ang_vel_z_l2, 
+        weight=-1.0, 
+        params={"asset_cfg": SceneEntityCfg("robot")}
+    ) 
+    roll_penalty = RewTerm(
+        func=mdp.ang_vel_x_l2, 
+        weight=-0.5, 
+        params={"asset_cfg": SceneEntityCfg("robot")}
+    ) 
 
     air_time_variance = RewTerm(
         func=mdp.air_time_variance_penalty,
         weight=-0.4,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
-
-    upward_vel_air = RewTerm(
-        func=mdp.upward_vel_air_airborne,
-        weight=0.05,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "asset_cfg": SceneEntityCfg("robot"),
-        },
-    )
-
-    # discourage yaw spin only in air
-    yaw_spin_air = RewTerm(
-        func=mdp.yaw_rate_penalty_air,
-        weight=-0.30,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "asset_cfg": SceneEntityCfg("robot"),
-        },
-    )
-
-    # discourage rotation about wrong axis (roll) while airborne
-    non_target_leak = RewTerm(
-        func=mdp.non_target_axis_leak_air,
-        weight=-0.60,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "target_axis": "pitch",
-        },
-    )
-
-    # encourage actual pitch rotation speed in air
-    pitch_rate_air = RewTerm(
-        func=mdp.target_axis_rate_air,
-        weight=0.25,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "axis": "pitch",
-        },
-    )
-
-    backflip_progress = RewTerm(
-        func=mdp.backflip_progress,
-        weight=14.0,  # dominate jump-only local optimum
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "axis": "pitch",
-            "full_rotation_rad": math.pi,
-            "upright_bonus": 0.0,
-            "air_only": True,
-            "landing_window_s": 0.6,
-        },
-    )
-
-    land_on_feet = RewTerm(
-        func=mdp.post_flip_land_reward,
-        weight=2.0,  # A good positive bonus for landing
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "min_airtime_s": 0.1, # a short jump counts
-        },
-    )
-
-    # regularizers
-    base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
+    
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0008)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.0e-7)
     joint_torques = RewTerm(func=mdp.joint_torques_l2, weight=-1.5e-4)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.06)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-6.0)
     energy = RewTerm(func=mdp.energy, weight=-1.5e-5)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
-
+    
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.06,
@@ -356,7 +350,7 @@ class RobotEnvCfg(ManagerBasedRLEnvCfg):
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
-    commands: CommandsCfg = CommandsCfg()        # <-- IMPORTANT: register dummy command
+    commands: CommandsCfg = CommandsCfg()        
 
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
