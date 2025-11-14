@@ -239,17 +239,19 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
 
+
 def _axis_angle_from_up(env, axis: str):
     """Angle (0..π) about a target body axis from the body 'up' vector."""
     up_b = env.scene["robot"].data.projected_gravity_b  # [N,3]
     z = torch.clamp(up_b[:, 2], -1.0, 1.0)
     if axis == "pitch":
-        num = torch.abs(up_b[:, 0])  # x component
+        num = torch.abs(up_b[:, 0])
     elif axis == "roll":
-        num = torch.abs(up_b[:, 1])  # y component
+        num = torch.abs(up_b[:, 1])
     else:
         num = torch.sqrt(up_b[:, 0] ** 2 + up_b[:, 1] ** 2)
-    return torch.atan2(num, z)  # [0, π]
+
+    return torch.atan2(num, z)
 
 def yaw_rate_penalty_air(env, sensor_cfg: SceneEntityCfg,
                          asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
@@ -274,8 +276,12 @@ def target_axis_rate_air(env, sensor_cfg: SceneEntityCfg, axis: str,
                          asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
     """Encourage angular speed about the target axis while airborne."""
     asset = env.scene[asset_cfg.name]
-    ang = torch.abs(asset.data.root_ang_vel_b[:, 1] if axis == "pitch"
-                    else asset.data.root_ang_vel_b[:, 0])     # roll uses x, pitch uses y
+    if axis == "pitch":
+        ang = -asset.data.root_ang_vel_b[:, 1]
+    else:
+        ang = -asset.data.root_ang_vel_b[:, 0]
+
+    ang = torch.clamp(ang, min=0.0)     # roll uses x, pitch uses y
     contact_sensor = env.scene.sensors[sensor_cfg.name]
     foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
     airborne = (foot_f < 1.0).all(dim=1)
@@ -289,13 +295,14 @@ def backflip_progress(env, sensor_cfg: SceneEntityCfg, axis: str,
                       landing_window_s: float = 0.6):
     """Axis-aware progress in [0,1]; only counts in air if air_only=True."""
     angle = _axis_angle_from_up(env, axis)
-    progress = torch.clamp(angle / math.pi, 0.0, 1.0)
+
+    progress = torch.clamp(1.0 - (angle / math.pi), 0.0, 1.0)
+    # ----------------------
 
     if air_only:
         contact_sensor = env.scene.sensors[sensor_cfg.name]
-        foot_f = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].norm(dim=-1)
-        airborne = (foot_f < 1.0).all(dim=1)
 
+        airborne = (foot_f < 1.0).all(dim=1)
         last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids].min(dim=1).values
         is_real_jump = (last_air >= min_airtime_for_progress)
 
@@ -326,7 +333,7 @@ def successful_backflip(env, sensor_cfg: SceneEntityCfg, upright_tol_rad: float,
     on_feet_now = (foot_f > 1.0).all(dim=1)
 
     angle = _axis_angle_from_up(env, axis)  # [0, π]
-    env._flip_state["seen_upside_down"] |= airborne & (angle >= 0.95 * math.pi)
+    env._flip_state["seen_upside_down"] |= airborne & (angle <= 0.1 * math.pi)
 
     # Jumped & stable landing window
     last_air = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids].min(dim=1).values
