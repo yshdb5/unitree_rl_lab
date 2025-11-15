@@ -161,8 +161,12 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-    successful_flip = DoneTerm(func=mdp.full_flip_completion)
-
+    successful_flip = DoneTerm(
+        func=mdp.full_flip_done,
+        params={
+            "angle_tol": 0.4,
+        },
+    )
 
 @configclass
 class CurriculumCfg:

@@ -275,6 +275,31 @@ def full_flip_completion(env: ManagerBasedRLEnv) -> torch.Tensor:
 
     return torch.exp(-0.5 * diff)
 
+def full_flip_done(
+    env: ManagerBasedRLEnv,
+    angle_tol: float = 0.4,
+) -> torch.Tensor:
+    """
+    Termination booléenne : True quand le backflip est complété (pitch ≈ -2π).
+    """
+    base = env.scene["robot"]
+
+    quat = base.data.root_quat_w
+    w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+
+    pitch = torch.atan2(
+        2.0 * (w * y - z * x),
+        1.0 - 2.0 * (y * y + x * x)
+    )
+    pitch_unwrapped = pitch + 2 * torch.pi * torch.floor((pitch + torch.pi) / (2 * torch.pi))
+
+    target = -2 * torch.pi
+    diff = torch.abs(pitch_unwrapped - target)
+
+    # Tensor booléen [num_envs], comme attendu par DoneTerm
+    return diff < angle_tol
+
+
 
 def leg_action_symmetry(env: ManagerBasedRLEnv, right_leg_ids, left_leg_ids):
     actions = env.action_manager.action 
