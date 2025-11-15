@@ -323,7 +323,7 @@ class TerminationsCfg:
 
     base_height = DoneTerm(
         func=mdp.root_height_below_minimum,
-        params={"minimum_height": 0.15}
+        params={"minimum_height": 0.05}
     )
 
     bad_orientation = DoneTerm(
