@@ -227,22 +227,9 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
 def backflip_pitch_velocity(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
     ) -> torch.Tensor:
+    """Reward positive pitch angular velocity for backflip."""
     asset: Articulation = env.scene[asset_cfg.name]
-    base = env.scene["robot"]
-    quat = base.data.root_quat_w 
-    w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-
-    pitch = torch.atan2(
-        2.0 * (w * y - z * x),
-        1.0 - 2.0 * (y * y + x * x)
-    )
-    pitch_unwrapped = pitch + 2 * torch.pi * torch.floor((pitch + torch.pi) / (2 * torch.pi))
-
-    not_yet_flipped = (pitch_unwrapped > -5.6).float()
-
-    pitch_vel = -asset.data.root_ang_vel_b[:, 1]
-    
-    return pitch_vel * not_yet_flipped
+    return -asset.data.root_ang_vel_b[:, 1]
 
 def backflip_roll_yaw_velocity(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
@@ -294,3 +281,22 @@ def leg_action_symmetry(env: ManagerBasedRLEnv, right_leg_ids, left_leg_ids):
     diff = actions[:, right_leg_ids] - actions[:, left_leg_ids]
     diff_norm = torch.norm(diff, dim=1).clamp(min=1e-6, max=10.0)
     return torch.exp(-diff_norm)
+
+def backflip_success(
+    env: ManagerBasedRLEnv,
+    completion_threshold: float = 0.8,
+    min_height: float = 0.25,
+) -> torch.Tensor:
+    """Episode termination when a full backflip is completed in a reasonable posture.
+
+    Returns a boolean tensor of shape (num_envs,) indicating which envs are done.
+    """
+    completion = full_flip_completion(env)
+
+    base = env.scene["robot"]
+    height = base.data.root_pos_w[:, 2]
+
+    height_ok = height > min_height
+
+    done = (completion > completion_threshold) & height_ok
+    return done

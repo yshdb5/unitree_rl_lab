@@ -144,7 +144,7 @@ class RewardsCfg:
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-10.0)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-5.0,
+        weight=-10.0,
         params={
             "threshold": 1.0,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base", ".*_hip", ".*_thigh", ".*_calf"]),
@@ -160,6 +160,13 @@ class TerminationsCfg:
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
+    )
+    successful_flip = DoneTerm(
+        func=mdp.backflip_success,
+        params={
+            "completion_threshold": 0.8,
+            "min_height": 0.25,
+        },
     )
 
 
