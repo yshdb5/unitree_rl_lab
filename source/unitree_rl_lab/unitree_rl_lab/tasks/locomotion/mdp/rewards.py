@@ -281,22 +281,3 @@ def leg_action_symmetry(env: ManagerBasedRLEnv, right_leg_ids, left_leg_ids):
     diff = actions[:, right_leg_ids] - actions[:, left_leg_ids]
     diff_norm = torch.norm(diff, dim=1).clamp(min=1e-6, max=10.0)
     return torch.exp(-diff_norm)
-
-def backflip_success(
-    env: ManagerBasedRLEnv,
-    completion_threshold: float = 0.8,
-    min_height: float = 0.25,
-) -> torch.Tensor:
-    """Episode termination when a full backflip is completed in a reasonable posture.
-
-    Returns a boolean tensor of shape (num_envs,) indicating which envs are done.
-    """
-    completion = full_flip_completion(env)
-
-    base = env.scene["robot"]
-    height = base.data.root_pos_w[:, 2]
-
-    height_ok = height > min_height
-
-    done = (completion > completion_threshold) & height_ok
-    return done
