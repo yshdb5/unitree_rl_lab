@@ -268,11 +268,7 @@ def full_flip_completion(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.exp(-diff * 0.5) 
 
 def leg_action_symmetry(env: ManagerBasedRLEnv, right_leg_ids, left_leg_ids):
-    """
-    Reward symmetric torque/position output on hind legs.
-    Ensures both legs push equally during jump.
-    """
-    actions = env.action_manager.actions
+    actions = env.action_manager.action 
     diff = actions[:, right_leg_ids] - actions[:, left_leg_ids]
     diff_norm = torch.norm(diff, dim=1).clamp(min=1e-6, max=10.0)
     return torch.exp(-diff_norm)
