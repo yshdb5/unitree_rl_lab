@@ -260,12 +260,21 @@ def reward_height(
 
 def full_flip_completion(env: ManagerBasedRLEnv) -> torch.Tensor:
     base = env.scene["robot"]
-    pitch = base.data.root_euler_xyz[:, 1]
+
+    quat = base.data.root_quat_w 
+    w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+
+    pitch = torch.atan2(
+        2.0 * (w * y - z * x),
+        1.0 - 2.0 * (y * y + x * x)
+    )
+    pitch_unwrapped = pitch + 2 * torch.pi * torch.floor((pitch + torch.pi) / (2 * torch.pi))
 
     target = -2 * torch.pi
-    diff = torch.abs(pitch - target)
+    diff = torch.abs(pitch_unwrapped - target)
 
-    return torch.exp(-diff * 0.5) 
+    return torch.exp(-0.5 * diff)
+
 
 def leg_action_symmetry(env: ManagerBasedRLEnv, right_leg_ids, left_leg_ids):
     actions = env.action_manager.action 
