@@ -257,3 +257,22 @@ def reward_height(
     """Rewards the robot for being high in the air."""
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.clamp(asset.data.root_pos_w[:, 2] - 0.3, min=0.0)
+
+def full_flip_completion(env: ManagerBasedRLEnv) -> torch.Tensor:
+    base = env.scene["robot"]
+    pitch = base.data.root_euler_xyz[:, 1]
+
+    target = -2 * torch.pi
+    diff = torch.abs(pitch - target)
+
+    return torch.exp(-diff * 0.5) 
+
+def leg_action_symmetry(env: ManagerBasedRLEnv, right_leg_ids, left_leg_ids):
+    """
+    Reward symmetric torque/position output on hind legs.
+    Ensures both legs push equally during jump.
+    """
+    actions = env.action_manager.actions
+    diff = actions[:, right_leg_ids] - actions[:, left_leg_ids]
+    diff_norm = torch.norm(diff, dim=1).clamp(min=1e-6, max=10.0)
+    return torch.exp(-diff_norm)

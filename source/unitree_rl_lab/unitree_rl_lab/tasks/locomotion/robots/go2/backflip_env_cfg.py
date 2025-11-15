@@ -108,13 +108,13 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # 1. Reward angular velocity perpendicular to sagittal plane (pitch)
-    reward_pitch_velocity = RewTerm(func=mdp.backflip_pitch_velocity, weight=3.0)
+    reward_pitch_velocity = RewTerm(func=mdp.backflip_pitch_velocity, weight=7.0)
 
     # 2. Penalize other angular velocities (roll, yaw)
     penalize_roll_yaw_velocity = RewTerm(func=mdp.backflip_roll_yaw_velocity, weight=-1.0)
 
     # 3. Penalize use of joint torque
-    joint_torques = RewTerm(func=mdp.joint_torques_l2, weight=-2e-5)
+    joint_torques = RewTerm(func=mdp.joint_torques_l2, weight=-5e-6)
 
     # 4. Penalize early termination (weight starts at 0 and is increased by curriculum)
     early_termination = RewTerm(func=mdp.early_termination_penalty, weight=0.0)
@@ -124,6 +124,19 @@ class RewardsCfg:
 
     # 6. Reward height to encourage jumping
     jump_height = RewTerm(func=mdp.reward_height, weight=4.0)
+    
+    # 7. Encourage symmetric hind-leg push (fix rear right lag)
+    leg_symmetry = RewTerm(
+        func=mdp.leg_action_symmetry,
+        weight=2.0,
+        params={
+            "right_leg_ids": [7, 8],   # RR_thigh, RR_calf
+            "left_leg_ids": [10, 11],  # RL_thigh, RL_calf  (
+        },
+    )
+    
+    # 8. Extra reward for achieving full 360° rotation (pitch ≈ -2π)
+    full_flip = RewTerm(func=mdp.full_flip_completion, weight=6.0)
 
     # Regularization
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
