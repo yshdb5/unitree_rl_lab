@@ -131,7 +131,7 @@ class RewardsCfg:
         weight=2.0,
         params={
             "right_leg_ids": [7, 8],   # RR_thigh, RR_calf
-            "left_leg_ids": [10, 11],  # RL_thigh, RL_calf  (
+            "left_leg_ids": [10, 11],  # RL_thigh, RL_calf
         },
     )
     
